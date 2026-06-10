@@ -84,11 +84,10 @@ const addTask = async () => {
   if (!activeSession.value || !taskForm.value.recipe) return;
   isLoading.value = true;
   try {
-    const recipe = recipes.value.find(r => r.id === taskForm.value.recipe);
     const taskData = {
       ...taskForm.value,
       session: activeSession.value.id,
-      target_unit: recipe?.base_yield_unit || 'kg'
+      target_unit: 'kg'
     };
     await api.post('production-tasks/', taskData);
     await fetchData();

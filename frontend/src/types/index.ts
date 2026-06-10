@@ -19,9 +19,6 @@ export interface RecipeComponent {
 export interface Recipe {
   id?: number;
   name: string;
-  calc_method: 'PERCENTAGE' | 'YIELD';
-  base_yield_qty: number;
-  base_yield_unit: string;
   instructions?: string;
   notes?: string;
   components: RecipeComponent[];

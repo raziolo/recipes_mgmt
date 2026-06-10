@@ -1,9 +1,9 @@
 import datetime
-from escpos.printer import Dummy, Usb, File
 from typing import Dict, Any
 
 class ProductionSheetPrinter:
     def __init__(self, printer_type='dummy', **kwargs):
+        from escpos.printer import Dummy, Usb, File
         """
         printer_type: 'usb', 'file', or 'dummy'
         """

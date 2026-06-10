@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import api from '../api';
 import AppModal from '../components/AppModal.vue';
 import type { Recipe, Ingredient } from '../types';
-import { PlusIcon, TrashIcon, CalculatorIcon, PencilSquareIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, CalculatorIcon, PencilIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useI18n();
 const recipes = ref<Recipe[]>([]);
@@ -20,9 +20,6 @@ const calcResults = ref<any>(null);
 
 const form = ref<Recipe>({
   name: '',
-  calc_method: 'YIELD',
-  base_yield_qty: 1,
-  base_yield_unit: 'kg',
   instructions: '',
   notes: '',
   components: []
@@ -43,21 +40,46 @@ const fetchData = async () => {
 
 onMounted(fetchData);
 
+const componentQty = ref<Record<number, { qty: number; unit: string }>>({});
+
+const getCompPct = (index: number) => {
+  const entry = componentQty.value[index];
+  if (!entry || !entry.qty || entry.qty <= 0) return 0;
+  const total = totalActualQty.value;
+  if (total === 0) return 0;
+  return Math.round((entry.qty / total) * 1000) / 10;
+};
+
+const totalActualQty = computed(() => {
+  let sum = 0;
+  for (const key of Object.keys(componentQty.value)) {
+    const entry = componentQty.value[key as any];
+    if (entry && entry.qty > 0) sum += entry.qty;
+  }
+  return Math.round(sum * 10) / 10;
+});
+
+const pctSum = computed(() => {
+  let sum = 0;
+  for (let i = 0; i < form.value.components.length; i++) {
+    sum += getCompPct(i);
+  }
+  return Math.round(sum * 10) / 10;
+});
+
 const openModal = async (recipe: Recipe | null = null) => {
   if (recipe) {
     editingRecipe.value = { ...recipe };
-    form.value = JSON.parse(JSON.stringify(recipe));
+    const cloned = JSON.parse(JSON.stringify(recipe));
+    form.value = cloned;
+    componentQty.value = {};
+    cloned.components.forEach((comp: any, i: number) => {
+      componentQty.value[i] = { qty: 0, unit: comp.unit || 'kg' };
+    });
   } else {
     editingRecipe.value = null;
-    form.value = {
-      name: '',
-      calc_method: 'YIELD',
-      base_yield_qty: 1,
-      base_yield_unit: 'kg',
-      instructions: '',
-      notes: '',
-      components: []
-    };
+    form.value = { name: '', instructions: '', notes: '', components: [] };
+    componentQty.value = {};
   }
   await nextTick();
   isModalOpen.value = true;
@@ -66,22 +88,45 @@ const openModal = async (recipe: Recipe | null = null) => {
 const closeModal = () => {
   isModalOpen.value = false;
   editingRecipe.value = null;
+  componentQty.value = {};
 };
 
 const addComponent = () => {
-  form.value.components.push({
-    value: 0,
-    unit: ''
-  });
+  const idx = form.value.components.length;
+  form.value.components.push({ value: 0, unit: 'kg' });
+  componentQty.value[idx] = { qty: 0, unit: 'kg' };
 };
 
 const removeComponent = (index: number) => {
   form.value.components.splice(index, 1);
+  const newMap: Record<number, { qty: number; unit: string }> = {};
+  Object.keys(componentQty.value).forEach((k) => {
+    const ki = parseInt(k);
+    if (ki < index) newMap[ki] = componentQty.value[ki];
+    else if (ki > index) newMap[ki - 1] = componentQty.value[ki];
+  });
+  componentQty.value = newMap;
 };
+
+const deducePercentages = () => {
+  const total = totalActualQty.value;
+  if (total === 0) return;
+  form.value.components.forEach((comp, i) => {
+    const entry = componentQty.value[i];
+    if (entry && entry.qty > 0) {
+      comp.value = Math.round((entry.qty / total) * 1000) / 10;
+    } else {
+      comp.value = 0;
+    }
+  });
+};
+
+watch(componentQty, () => deducePercentages(), { deep: true });
 
 const saveRecipe = async () => {
   isLoading.value = true;
   try {
+    deducePercentages();
     if (editingRecipe.value?.id) {
       await api.put(`recipes/${editingRecipe.value.id}/`, form.value);
     } else {
@@ -109,7 +154,7 @@ const deleteRecipe = async (id: number) => {
 
 const openCalcModal = (recipe: Recipe) => {
   selectedRecipeForCalc.value = recipe;
-  calcQty.value = Number(recipe.base_yield_qty);
+  calcQty.value = 1;
   calcResults.value = null;
   isCalcModalOpen.value = true;
 };
@@ -129,8 +174,17 @@ const runCalculation = async () => {
   }
 };
 
-const getMethodLabel = (method: string) => {
-  return method === 'YIELD' ? t('recipes.methods.yield') : t('recipes.methods.percentage');
+const getComponentType = (comp: any) => {
+  return comp._type || (comp.sub_recipe ? 'sub_recipe' : 'ingredient');
+};
+
+const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
+  comp._type = type;
+  if (type === 'ingredient') {
+    comp.sub_recipe = undefined;
+  } else {
+    comp.ingredient = undefined;
+  }
 };
 </script>
 
@@ -151,17 +205,9 @@ const getMethodLabel = (method: string) => {
         <div @click="openModal(recipe)" class="cursor-pointer">
           <div class="flex justify-between items-start">
             <h3 class="text-xl font-black text-gray-900 dark:text-white">{{ recipe.name }}</h3>
-            <PencilSquareIcon class="w-5 h-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <PencilIcon class="w-5 h-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
-          <div class="mt-2 flex flex-wrap gap-2">
-            <span class="text-[10px] px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 uppercase font-black tracking-widest">
-              {{ getMethodLabel(recipe.calc_method) }}
-            </span>
-            <span class="text-[10px] px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-black tracking-widest uppercase">
-              {{ recipe.base_yield_qty }} {{ recipe.base_yield_unit }}
-            </span>
-          </div>
-          <p class="mt-4 text-sm text-gray-500 dark:text-gray-400 line-clamp-3 h-15 overflow-hidden font-medium">
+          <p class="mt-3 text-sm text-gray-500 dark:text-gray-400 line-clamp-3 overflow-hidden font-medium">
             {{ recipe.instructions || '---' }}
           </p>
         </div>
@@ -189,60 +235,65 @@ const getMethodLabel = (method: string) => {
       @close="closeModal"
     >
       <form @submit.prevent="saveRecipe" class="space-y-6">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div class="sm:col-span-2">
-            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.name') }}</label>
-            <input v-model="form.name" type="text" required class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
-          </div>
-          
-          <div>
-            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.method') }}</label>
-            <select v-model="form.calc_method" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3 font-bold">
-              <option value="YIELD">{{ t('recipes.methods.yield') }}</option>
-              <option value="PERCENTAGE">{{ t('recipes.methods.percentage') }}</option>
-            </select>
-          </div>
-          
-          <div v-if="form.calc_method === 'YIELD'" class="flex space-x-2">
-            <div class="w-1/2">
-              <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.baseQty') }}</label>
-              <input v-model="form.base_yield_qty" type="number" step="0.001" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
-            </div>
-            <div class="w-1/2">
-              <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.baseUnit') }}</label>
-              <input v-model="form.base_yield_unit" type="text" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
-            </div>
-          </div>
+        <div>
+          <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.name') }}</label>
+          <input v-model="form.name" type="text" required class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
         </div>
 
         <!-- Components -->
-        <div class="mt-8">
+        <div>
           <div class="flex justify-between items-center mb-4">
             <h4 class="text-xs font-black text-gray-400 uppercase tracking-widest">{{ t('recipes.form.components') }}</h4>
             <button type="button" @click="addComponent" class="text-xs bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 px-3 py-1.5 rounded-lg font-black hover:bg-primary-100 transition-all flex items-center uppercase tracking-tighter">
               <PlusIcon class="w-4 h-4 mr-1" /> {{ t('recipes.form.addComponent') }}
             </button>
           </div>
+
+          <div v-if="form.components.length > 0" class="mb-3">
+            <div class="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-300" :style="{ width: Math.min(pctSum, 100) + '%' }" :class="pctSum > 100.1 ? 'bg-red-500' : 'bg-primary-500'" />
+            </div>
+            <p class="mt-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex justify-between">
+              <span>{{ t('recipes.form.totalWeight') }}: {{ totalActualQty.toFixed(1) }}</span>
+              <span :class="pctSum > 100.1 ? 'text-red-500' : 'text-primary-500'">{{ pctSum.toFixed(1) }}%</span>
+            </p>
+          </div>
           
-          <div class="space-y-3 max-h-72 overflow-y-auto pr-2 custom-scrollbar">
-            <div v-for="(comp, index) in form.components" :key="index" class="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-700 relative">
-              <div class="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <select v-model="comp.ingredient" class="text-sm p-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
-                  <option :value="undefined">{{ t('recipes.form.selectIngredient') }}</option>
-                  <option v-for="ing in ingredients" :key="ing.id" :value="ing.id">{{ ing.name }}</option>
-                </select>
-                <select v-model="comp.sub_recipe" class="text-sm p-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
-                  <option :value="undefined">{{ t('recipes.form.selectRecipe') }}</option>
-                  <option v-for="r in recipes" :key="r.id" :value="r.id" :disabled="r.id === editingRecipe?.id">{{ r.name }}</option>
-                </select>
+          <div class="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+            <div v-for="(comp, index) in form.components" :key="index" class="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-700 space-y-2">
+              <div class="flex bg-gray-200/50 dark:bg-gray-800 rounded-lg p-0.5 w-fit border border-gray-200 dark:border-gray-700">
+                <button type="button" @click="setComponentType(comp, 'ingredient')" class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all" :class="getComponentType(comp) === 'ingredient' ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+                  {{ t('recipes.form.ingredient') }}
+                </button>
+                <button type="button" @click="setComponentType(comp, 'sub_recipe')" class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all" :class="getComponentType(comp) === 'sub_recipe' ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+                  {{ t('recipes.form.subRecipe') }}
+                </button>
               </div>
-              <div class="flex items-center space-x-2 w-full sm:w-auto">
-                <input v-model="comp.value" type="number" step="0.001" :placeholder="t('recipes.form.value')" class="w-full sm:w-20 text-sm p-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold" />
-                <input v-model="comp.unit" type="text" :placeholder="t('recipes.form.unit')" class="w-full sm:w-16 text-sm p-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold" />
-                <button @click="removeComponent(index)" type="button" class="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all">
+              <select v-if="getComponentType(comp) === 'ingredient'" v-model="comp.ingredient" class="w-full truncate text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
+                <option :value="undefined">{{ t('recipes.form.selectIngredient') }}</option>
+                <option v-for="ing in ingredients" :key="ing.id" :value="ing.id" class="truncate">{{ ing.name }}</option>
+              </select>
+              <select v-else v-model="comp.sub_recipe" class="w-full truncate text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
+                <option :value="undefined">{{ t('recipes.form.selectRecipe') }}</option>
+                <option v-for="r in recipes" :key="r.id" :value="r.id" :disabled="r.id === editingRecipe?.id" class="truncate">{{ r.name }}</option>
+              </select>
+              <div class="flex items-center gap-2">
+                <input v-model="componentQty[index].qty" type="number" step="0.1" min="0" :placeholder="t('recipes.form.qty')" class="flex-1 min-w-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold" />
+                <select v-model="componentQty[index].unit" class="w-16 shrink-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
+                  <option value="kg">kg</option>
+                  <option value="g">g</option>
+                  <option value="L">L</option>
+                  <option value="ml">ml</option>
+                  <option value="pcs">pcs</option>
+                </select>
+                <span class="w-12 text-right text-xs font-black text-primary-600 dark:text-primary-400">{{ getCompPct(index).toFixed(1) }}%</span>
+                <button @click="removeComponent(index)" type="button" class="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all shrink-0">
                   <TrashIcon class="w-5 h-5" />
                 </button>
               </div>
+            </div>
+            <div v-if="form.components.length === 0" class="text-center py-10 text-gray-400 italic bg-gray-50/50 dark:bg-gray-900/30 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
+              {{ t('recipes.form.noComponents') }}
             </div>
           </div>
         </div>
@@ -252,7 +303,7 @@ const getMethodLabel = (method: string) => {
           <textarea v-model="form.instructions" rows="4" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3"></textarea>
         </div>
 
-        <div class="mt-8 flex flex-col sm:flex-row justify-end gap-3">
+        <div class="flex flex-col sm:flex-row justify-end gap-3 pt-2">
           <button type="button" @click="closeModal" class="px-6 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
             {{ t('common.cancel') }}
           </button>
@@ -274,10 +325,10 @@ const getMethodLabel = (method: string) => {
         
         <div class="flex flex-col sm:flex-row items-end gap-4 mb-8">
           <div class="flex-1 w-full">
-            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.baseQty') }}</label>
+            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Target Quantity (kg)</label>
             <div class="relative">
-              <input v-model="calcQty" type="number" step="0.001" class="block w-full p-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-900 font-black text-xl text-primary-600" />
-              <div class="absolute right-4 top-1/2 -translate-y-1/2 font-black text-gray-400 uppercase">{{ selectedRecipeForCalc.base_yield_unit }}</div>
+              <input v-model="calcQty" type="number" step="0.1" class="block w-full p-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-900 font-black text-xl text-primary-600" />
+              <div class="absolute right-4 top-1/2 -translate-y-1/2 font-black text-gray-400 uppercase">kg</div>
             </div>
           </div>
           <button @click="runCalculation" :disabled="isLoading" class="w-full sm:w-auto bg-gray-900 dark:bg-primary-600 text-white px-8 py-4 rounded-2xl font-black hover:bg-primary-700 transition-all flex items-center justify-center shadow-xl active:scale-95">
@@ -294,24 +345,24 @@ const getMethodLabel = (method: string) => {
             <div v-for="ing in calcResults.ingredients" :key="ing.name" class="flex justify-between items-center group">
               <span class="text-gray-400 group-hover:text-white transition-colors">{{ ing.name }}</span>
               <div class="flex-1 border-b border-gray-800 mx-4 border-dotted"></div>
-              <span class="text-green-400 font-bold whitespace-nowrap">{{ ing.qty.toFixed(3) }} <span class="text-[10px] text-gray-600 uppercase">{{ ing.unit }}</span></span>
+              <span class="text-green-400 font-bold whitespace-nowrap">{{ Number(ing.qty).toFixed(1) }} <span class="text-[10px] text-gray-600 uppercase">{{ ing.unit }}</span></span>
             </div>
           </div>
           
           <div v-if="calcResults.sub_recipes && calcResults.sub_recipes.length > 0">
             <div class="flex items-center space-x-2 mt-8 mb-4">
-               <div class="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></div>
+               <div class="h-2 w-2 rounded-full bg-primary-500 animate-pulse"></div>
                <h5 class="text-xs font-black text-gray-500 uppercase tracking-widest">SUB-RECIPES</h5>
             </div>
             <div v-for="sub in calcResults.sub_recipes" :key="sub.recipe_name" class="mb-6 bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
               <div class="flex justify-between font-black text-white mb-3">
                 <span>{{ sub.recipe_name }}</span>
-                <span class="text-blue-400">{{ sub.target_qty.toFixed(3) }} <span class="text-[10px] text-gray-500">{{ sub.target_unit }}</span></span>
+                <span class="text-primary-400">{{ Number(sub.target_qty).toFixed(1) }} <span class="text-[10px] text-gray-500">{{ sub.target_unit }}</span></span>
               </div>
               <div class="space-y-1">
                 <div v-for="ing in sub.ingredients" :key="ing.name" class="pl-4 text-xs flex justify-between">
                   <span class="text-gray-500">{{ ing.name }}</span>
-                  <span class="text-gray-300">{{ ing.qty.toFixed(3) }} {{ ing.unit }}</span>
+                  <span class="text-gray-300">{{ Number(ing.qty).toFixed(1) }} {{ ing.unit }}</span>
                 </div>
               </div>
             </div>
