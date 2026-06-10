@@ -3,8 +3,8 @@ import { ref, onMounted, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import api from '../api';
 import AppModal from '../components/AppModal.vue';
-import type { ProductionSession, ProductionTask, Recipe } from '../types';
-import { PlusIcon, PrinterIcon, TrashIcon, CalendarDaysIcon, PlusCircleIcon } from '@heroicons/vue/24/outline';
+import type { ProductionSession, Recipe } from '../types';
+import { PrinterIcon, TrashIcon, CalendarDaysIcon, PlusCircleIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useI18n();
 const sessions = ref<ProductionSession[]>([]);
@@ -112,7 +112,7 @@ const deleteTask = async (taskId: number) => {
 
 const printSheet = async (taskId: number) => {
   try {
-    const response = await api.post(`production-tasks/${taskId}/print_sheet/`);
+    await api.post(`production-tasks/${taskId}/print_sheet/`);
     alert('Sent to printer!');
   } catch (error) {
     console.error('Printing error:', error);

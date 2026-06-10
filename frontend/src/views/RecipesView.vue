@@ -327,9 +327,13 @@ const getMethodLabel = (method: string) => {
   width: 6px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  @apply bg-transparent;
+  background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-gray-200 dark:bg-gray-700 rounded-full;
+  background-color: #e5e7eb;
+  border-radius: 9999px;
+}
+:root.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #374151;
 }
 </style>

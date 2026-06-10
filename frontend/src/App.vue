@@ -113,17 +113,50 @@ onMounted(() => {
 </template>
 
 <style>
-@import "tailwindcss";
-
 .nav-link {
-  @apply flex items-center justify-center md:justify-start px-4 py-4 text-gray-600 dark:text-slate-400 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-all font-bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 1rem;
+  color: #4b5563;
+  border-radius: 1rem;
+  font-weight: 700;
+  transition: all 0.15s;
+}
+.nav-link:hover {
+  background-color: #f9fafb;
+  color: var(--color-primary-600);
+}
+:root.dark .nav-link {
+  color: #94a3b8;
+}
+:root.dark .nav-link:hover {
+  background-color: #1e293b;
+  color: var(--color-primary-400);
+}
+@media (min-width: 768px) {
+  .nav-link {
+    justify-content: flex-start;
+  }
 }
 
 .nav-link-active {
-  @apply bg-primary-600 dark:bg-primary-600 text-white dark:text-white shadow-lg shadow-primary-600/30 hover:bg-primary-700 hover:text-white;
+  background-color: var(--color-primary-600);
+  color: white;
+  box-shadow: 0 10px 15px -3px rgb(220 38 38 / 0.3);
+}
+.nav-link-active:hover {
+  background-color: var(--color-primary-700);
+  color: white;
+}
+:root.dark .nav-link-active {
+  background-color: var(--color-primary-600);
+  color: white;
 }
 
 body {
-  @apply antialiased select-none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
 }
 </style>
