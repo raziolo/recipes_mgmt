@@ -9,5 +9,6 @@ dependencies = [
     "django-cors-headers>=4.9.0",
     "djangorestframework>=3.17.1",
     "python-escpos>=3.1",
+    "pyyaml>=6.0.3",
     "setuptools>=82.0.1",
 ]

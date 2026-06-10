@@ -1,9 +1,9 @@
 import datetime
 from typing import Dict, Any
+from escpos.printer import Dummy, Usb, File
 
 class ProductionSheetPrinter:
     def __init__(self, printer_type='dummy', **kwargs):
-        from escpos.printer import Dummy, Usb, File
         """
         printer_type: 'usb', 'file', or 'dummy'
         """
@@ -17,9 +17,9 @@ class ProductionSheetPrinter:
 
     def print_task(self, task_data: Dict[str, Any]):
         p = self.p
-        p.set(align='center', text_type='B', width=2, height=2)
+        p.set(align='center', bold=True, double_width=True, double_height=True)
         p.text(f"{(task_data.get('recipe_name') or 'UNKNOWN')}\n")
-        p.set(align='center', text_type='NORMAL', width=1, height=1)
+        p.set(align='center')
         p.text(f"Batch: {task_data.get('target_qty', 0)} {task_data.get('target_unit', '')}\n")
         p.text(f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
         p.text("-" * 42 + "\n")

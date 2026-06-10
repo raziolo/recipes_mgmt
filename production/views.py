@@ -18,21 +18,12 @@ class ProductionTaskViewSet(viewsets.ModelViewSet):
     def print_sheet(self, request, pk=None):
         try:
             task = self.get_object()
-            if not task.calculated_data:
-                # Calculate if not already done
-                task.calculated_data = RecipeCalculator.calculate(task.recipe, task.target_qty)
-                task.save()
-            
-            # Add instructions safely
-            # Ensure task.calculated_data is a dict (JSONField might need refresh)
-            data = task.calculated_data
-            if not isinstance(data, dict):
-                 import json
-                 data = json.loads(data) if isinstance(data, str) else {}
-            
+            data = RecipeCalculator.calculate(task.recipe, task.target_qty)
             data['instructions'] = task.recipe.instructions or "See master recipe."
+            task.calculated_data = data
+            task.save(update_fields=['calculated_data'])
             
-            printer = ProductionSheetPrinter(printer_type='dummy') # Change to usb in production
+            printer = ProductionSheetPrinter(printer_type='dummy')
             printer.print_task(data)
             
             return Response({'status': 'Printed (mocked)', 'output': str(printer.get_output())})
