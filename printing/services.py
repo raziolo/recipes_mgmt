@@ -18,28 +18,33 @@ class ProductionSheetPrinter:
     def print_task(self, task_data: Dict[str, Any]):
         p = self.p
         p.set(align='center', text_type='B', width=2, height=2)
-        p.text(f"{task_data['recipe_name']}\n")
+        p.text(f"{(task_data.get('recipe_name') or 'UNKNOWN')}\n")
         p.set(align='center', text_type='NORMAL', width=1, height=1)
-        p.text(f"Batch: {task_data['target_qty']} {task_data['target_unit']}\n")
+        p.text(f"Batch: {task_data.get('target_qty', 0)} {task_data.get('target_unit', '')}\n")
         p.text(f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
         p.text("-" * 42 + "\n")
 
         p.set(align='left')
         p.text("INGREDIENTS:\n")
         for ing in task_data.get('ingredients', []):
-            qty_str = f"{ing['qty']:.3f} {ing['unit']}"
-            p.text(f"{ing['name']:<30} {qty_str:>11}\n")
+            name = ing.get('name') or 'Unknown'
+            qty = float(ing.get('qty') or 0)
+            unit = ing.get('unit') or ''
+            qty_str = f"{qty:.3f} {unit}"
+            p.text(f"{name:<30} {qty_str:>11}\n")
 
         if task_data.get('sub_recipes'):
             p.text("\nSUB-RECIPES:\n")
             for sub in task_data['sub_recipes']:
-                p.text(f"- {sub['recipe_name']}: {sub['target_qty']} {sub['target_unit']}\n")
+                s_name = sub.get('recipe_name') or 'Sub'
+                s_qty = sub.get('target_qty', 0)
+                s_unit = sub.get('target_unit', '')
+                p.text(f"- {s_name}: {s_qty} {s_unit}\n")
 
         p.text("-" * 42 + "\n")
         p.text("INSTRUCTIONS:\n")
-        # In a real scenario, we'd fetch instructions from the Recipe model
-        # but here we might have them in the data or fetch them.
-        p.text(task_data.get('instructions', 'See master recipe.') + "\n")
+        instr = task_data.get('instructions') or 'See master recipe.'
+        p.text(str(instr) + "\n")
         
         p.text("\n\n")
         p.cut()

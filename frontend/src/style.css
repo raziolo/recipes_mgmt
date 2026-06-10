@@ -19,7 +19,7 @@
   font-weight: 400;
 
   color-scheme: light dark;
-  background-color: #f9fafb;
+  background-color: #f3f4f6;
   color: #111827;
 
   font-synthesis: none;
@@ -28,29 +28,27 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    background-color: #111827;
-    color: #f9fafb;
-  }
-}
-
-html.dark :root {
-  background-color: #111827;
-  color: #f9fafb;
+html.dark {
+  background-color: #0f172a;
+  color: #f8fafc;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  @apply bg-gray-100 dark:bg-slate-950 text-gray-900 dark:text-slate-100;
 }
 
 /* Form element fixes for contrast */
 select, input, textarea {
-  @apply bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100;
+  @apply bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-700 text-gray-900 dark:text-slate-100 focus:ring-primary-500 focus:border-primary-500;
 }
 
 option {
-  @apply bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100;
+  @apply bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100;
+}
+
+.modal-backdrop {
+  @apply fixed inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity;
 }
