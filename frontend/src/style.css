@@ -19,8 +19,8 @@
   font-weight: 400;
 
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  background-color: #f9fafb;
+  color: #111827;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -28,10 +28,29 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    background-color: #111827;
+    color: #f9fafb;
+  }
+}
+
+html.dark :root {
+  background-color: #111827;
+  color: #f9fafb;
+}
+
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
+}
+
+/* Form element fixes for contrast */
+select, input, textarea {
+  @apply bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100;
+}
+
+option {
+  @apply bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100;
 }
