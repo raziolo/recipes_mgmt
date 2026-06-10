@@ -3,6 +3,7 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import api from '../api';
 import AppModal from '../components/AppModal.vue';
+import ComboBox from '../components/ComboBox.vue';
 import type { Recipe, Ingredient } from '../types';
 import { PlusIcon, TrashIcon, CalculatorIcon, PencilIcon } from '@heroicons/vue/24/outline';
 
@@ -13,6 +14,10 @@ const isModalOpen = ref(false);
 const isCalcModalOpen = ref(false);
 const editingRecipe = ref<Recipe | null>(null);
 const isLoading = ref(false);
+
+const isCreateIngredientOpen = ref(false);
+const createTargetIndex = ref<number | null>(null);
+const createForm = ref({ name: '', unit: 'kg', category: '', notes: '' });
 
 const selectedRecipeForCalc = ref<Recipe | null>(null);
 const calcQty = ref(1);
@@ -40,24 +45,58 @@ const fetchData = async () => {
 
 onMounted(fetchData);
 
+const openCreateIngredient = (index: number) => {
+  createTargetIndex.value = index;
+  createForm.value = { name: '', unit: 'kg', category: '', notes: '' };
+  isCreateIngredientOpen.value = true;
+};
+
+const saveNewIngredient = async () => {
+  try {
+    const res = await api.post('ingredients/', createForm.value);
+    const newIng = res.data;
+    await fetchData();
+    if (createTargetIndex.value !== null && form.value.components[createTargetIndex.value]) {
+      form.value.components[createTargetIndex.value].ingredient = newIng.id;
+    }
+    isCreateIngredientOpen.value = false;
+    createTargetIndex.value = null;
+  } catch (error) {
+    console.error('Error creating ingredient:', error);
+  }
+};
+
+const normalizeKg = (qty: number, unit: string): number => {
+  const u = unit.toLowerCase();
+  if (u === 'kg') return qty;
+  if (u === 'g' || u === 'gr') return qty / 1000;
+  if (u === 'l') return qty;
+  if (u === 'ml') return qty / 1000;
+  return qty;
+};
+
 const componentQty = ref<Record<number, { qty: number; unit: string }>>({});
 
-const getCompPct = (index: number) => {
+const getCompKg = (index: number): number => {
   const entry = componentQty.value[index];
   if (!entry || !entry.qty || entry.qty <= 0) return 0;
-  const total = totalActualQty.value;
-  if (total === 0) return 0;
-  return Math.round((entry.qty / total) * 1000) / 10;
+  return normalizeKg(entry.qty, entry.unit);
 };
 
 const totalActualQty = computed(() => {
   let sum = 0;
   for (const key of Object.keys(componentQty.value)) {
-    const entry = componentQty.value[key as any];
-    if (entry && entry.qty > 0) sum += entry.qty;
+    sum += getCompKg(parseInt(key));
   }
   return Math.round(sum * 10) / 10;
 });
+
+const getCompPct = (index: number) => {
+  const total = totalActualQty.value;
+  const kg = getCompKg(index);
+  if (total === 0 || kg === 0) return 0;
+  return Math.round((kg / total) * 1000) / 10;
+};
 
 const pctSum = computed(() => {
   let sum = 0;
@@ -74,7 +113,7 @@ const openModal = async (recipe: Recipe | null = null) => {
     form.value = cloned;
     componentQty.value = {};
     cloned.components.forEach((comp: any, i: number) => {
-      componentQty.value[i] = { qty: 0, unit: comp.unit || 'kg' };
+      componentQty.value[i] = { qty: Number(comp.value) || 0, unit: comp.unit || 'kg' };
     });
   } else {
     editingRecipe.value = null;
@@ -89,6 +128,7 @@ const closeModal = () => {
   isModalOpen.value = false;
   editingRecipe.value = null;
   componentQty.value = {};
+  form.value = { name: '', instructions: '', notes: '', components: [] };
 };
 
 const addComponent = () => {
@@ -112,9 +152,9 @@ const deducePercentages = () => {
   const total = totalActualQty.value;
   if (total === 0) return;
   form.value.components.forEach((comp, i) => {
-    const entry = componentQty.value[i];
-    if (entry && entry.qty > 0) {
-      comp.value = Math.round((entry.qty / total) * 1000) / 10;
+    const kg = getCompKg(i);
+    if (kg > 0) {
+      comp.value = Math.round((kg / total) * 1000) / 10;
     } else {
       comp.value = 0;
     }
@@ -127,10 +167,12 @@ const saveRecipe = async () => {
   isLoading.value = true;
   try {
     deducePercentages();
+    const payload = JSON.parse(JSON.stringify(form.value));
+    payload.components.forEach((c: any) => { delete c._type; });
     if (editingRecipe.value?.id) {
-      await api.put(`recipes/${editingRecipe.value.id}/`, form.value);
+      await api.put(`recipes/${editingRecipe.value.id}/`, payload);
     } else {
-      await api.post('recipes/', form.value);
+      await api.post('recipes/', payload);
     }
     await fetchData();
     closeModal();
@@ -269,14 +311,24 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
                   {{ t('recipes.form.subRecipe') }}
                 </button>
               </div>
-              <select v-if="getComponentType(comp) === 'ingredient'" v-model="comp.ingredient" class="w-full truncate text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
-                <option :value="undefined">{{ t('recipes.form.selectIngredient') }}</option>
-                <option v-for="ing in ingredients" :key="ing.id" :value="ing.id" class="truncate">{{ ing.name }}</option>
-              </select>
-              <select v-else v-model="comp.sub_recipe" class="w-full truncate text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
-                <option :value="undefined">{{ t('recipes.form.selectRecipe') }}</option>
-                <option v-for="r in recipes" :key="r.id" :value="r.id" :disabled="r.id === editingRecipe?.id" class="truncate">{{ r.name }}</option>
-              </select>
+              <ComboBox
+                v-if="getComponentType(comp) === 'ingredient'"
+                v-model="comp.ingredient"
+                :options="ingredients"
+                :placeholder="t('recipes.form.selectIngredient')"
+                :allow-create="true"
+                no-results-label="Nessun risultato"
+                clear-label="Annulla selezione"
+                :create-label="t('ingredients.addBtn')"
+                @create="openCreateIngredient(index)"
+              />
+              <ComboBox
+                v-else
+                v-model="comp.sub_recipe"
+                :options="recipes.filter(r => r.id !== editingRecipe?.id)"
+                :placeholder="t('recipes.form.selectRecipe')"
+                no-results-label="Nessun risultato"
+              />
               <div class="flex items-center gap-2">
                 <input v-model="componentQty[index].qty" type="number" step="0.1" min="0" :placeholder="t('recipes.form.qty')" class="flex-1 min-w-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold" />
                 <select v-model="componentQty[index].unit" class="w-16 shrink-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
@@ -314,6 +366,44 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
       </form>
     </AppModal>
 
+    <!-- Create Ingredient Mini Modal -->
+    <AppModal
+      :show="isCreateIngredientOpen"
+      :title="t('ingredients.addBtn')"
+      @close="isCreateIngredientOpen = false"
+    >
+      <form @submit.prevent="saveNewIngredient" class="space-y-5">
+        <div>
+          <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('ingredients.form.name') }}</label>
+          <input v-model="createForm.name" type="text" required class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('ingredients.form.unit') }}</label>
+            <select v-model="createForm.unit" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3 font-bold">
+              <option value="kg">kg</option>
+              <option value="g">g</option>
+              <option value="L">L</option>
+              <option value="ml">ml</option>
+              <option value="pcs">pcs</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('ingredients.form.category') }}</label>
+            <input v-model="createForm.category" type="text" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="isCreateIngredientOpen = false" class="px-5 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="submit" class="px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 shadow-lg shadow-primary-500/20">
+            {{ t('common.save') }}
+          </button>
+        </div>
+      </form>
+    </AppModal>
+
     <!-- Calculation Modal -->
     <AppModal 
       :show="isCalcModalOpen" 
@@ -345,7 +435,7 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
             <div v-for="ing in calcResults.ingredients" :key="ing.name" class="flex justify-between items-center group">
               <span class="text-gray-400 group-hover:text-white transition-colors">{{ ing.name }}</span>
               <div class="flex-1 border-b border-gray-800 mx-4 border-dotted"></div>
-              <span class="text-green-400 font-bold whitespace-nowrap">{{ Number(ing.qty).toFixed(1) }} <span class="text-[10px] text-gray-600 uppercase">{{ ing.unit }}</span></span>
+              <span class="text-green-400 font-bold whitespace-nowrap">{{ Number(ing.qty).toFixed(3) }} <span class="text-[10px] text-gray-600 uppercase">{{ ing.unit }}</span></span>
             </div>
           </div>
           
@@ -357,12 +447,12 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
             <div v-for="sub in calcResults.sub_recipes" :key="sub.recipe_name" class="mb-6 bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
               <div class="flex justify-between font-black text-white mb-3">
                 <span>{{ sub.recipe_name }}</span>
-                <span class="text-primary-400">{{ Number(sub.target_qty).toFixed(1) }} <span class="text-[10px] text-gray-500">{{ sub.target_unit }}</span></span>
+                <span class="text-primary-400">{{ Number(sub.target_qty).toFixed(3) }} <span class="text-[10px] text-gray-500">{{ sub.target_unit }}</span></span>
               </div>
               <div class="space-y-1">
                 <div v-for="ing in sub.ingredients" :key="ing.name" class="pl-4 text-xs flex justify-between">
                   <span class="text-gray-500">{{ ing.name }}</span>
-                  <span class="text-gray-300">{{ Number(ing.qty).toFixed(1) }} {{ ing.unit }}</span>
+                  <span class="text-gray-300">{{ Number(ing.qty).toFixed(3) }} {{ ing.unit }}</span>
                 </div>
               </div>
             </div>
