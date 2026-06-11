@@ -135,8 +135,41 @@ const printSheet = async (taskId: number) => {
 
 const doPrint = () => {
   isPrintPreviewOpen.value = false;
-  setTimeout(() => window.print(), 200);
+  const data = printPreviewData.value;
+  const checkedItems = checkedPrintItems.value;
+  if (!data) return;
+  const pw = window.open('', '_blank');
+  if (!pw) return;
+  pw.document.write(`<!DOCTYPE html>
+<html>
+<head><title>${h(data.recipe_name)}</title>
+<style>
+  @page { margin: 2cm; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; color: #000; margin: 0; padding: 0; }
+  h1 { font-size: 24pt; font-weight: 900; margin-bottom: 4pt; }
+  .total { font-size: 12pt; font-weight: 700; color: #555; margin-bottom: 20pt; }
+  h2 { font-size: 14pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #333; border-bottom: 2pt solid #333; padding-bottom: 4pt; margin: 16pt 0 8pt; }
+  ul { list-style: disc; padding-left: 20pt; margin: 0; }
+  li { font-size: 11pt; padding: 2pt 0; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h1>${h(data.recipe_name)}</h1>
+  <p class="total">${data.target_qty} ${data.target_unit}</p>
+  <h2>${t('recipes.form.printPreview.components')}</h2>
+  <ul>
+    ${data.ingredients.map((ing: any) => `<li>${h(ing.name)} — ${ing.qty} ${ing.unit}</li>`).join('')}
+  </ul>
+  ${data.sub_recipes && data.sub_recipes.length > 0 ? '<h2>Sub-recipes</h2>\n  <ul>\n' + data.sub_recipes.map((sub: any) => `<li>${h(sub.recipe_name)} — ${sub.target_qty} ${sub.target_unit}${sub.ingredients ? '<ul>' + sub.ingredients.map((ing: any) => `<li>${h(ing.name)} — ${ing.qty} ${ing.unit}</li>`).join('') + '</ul>' : ''}</li>`).join('\n    ') + '\n  </ul>' : ''}
+  ${checkedItems.length > 0 ? `<h2>${t('recipes.form.printPreview.instructions')}</h2>\n  <ul>\n    ${checkedItems.map((item: any) => `<li>${h(item.text)}</li>`).join('\n    ')}\n  </ul>` : ''}
+</body>
+</html>`);
+  pw.document.close();
+  pw.print();
 };
+
+const h = (s: string | number | undefined | null): string =>
+  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const deleteSession = async (id: number) => {
   if (!confirm(t('common.delete') + ' ' + t('production.session') + '?')) return;
@@ -351,38 +384,6 @@ const getStatusClass = (status: string) => {
         </div>
       </div>
     </AppModal>
-
-    <!-- Printable Block -->
-    <div id="print-area-production" class="print-only">
-      <div v-if="printPreviewData" class="print-header">
-        <h1>{{ printPreviewData.recipe_name }}</h1>
-        <p class="print-total">{{ printPreviewData.target_qty }} {{ printPreviewData.target_unit }}</p>
-      </div>
-      <div v-if="printPreviewData" class="print-section">
-        <h2>{{ t('recipes.form.printPreview.components') }}</h2>
-        <ul>
-          <li v-for="(ing, i) in printPreviewData.ingredients" :key="i">
-            {{ ing.name }} — {{ ing.qty }} {{ ing.unit }}
-          </li>
-        </ul>
-        <div v-if="printPreviewData.sub_recipes && printPreviewData.sub_recipes.length > 0">
-          <div v-for="(sub, i) in printPreviewData.sub_recipes" :key="'sub'+i" style="margin-top:8pt">
-            <p style="font-weight:700">{{ sub.recipe_name }} — {{ sub.target_qty }} {{ sub.target_unit }}</p>
-            <ul>
-              <li v-for="(ing, j) in sub.ingredients" :key="'s'+i+'i'+j">
-                {{ ing.name }} — {{ ing.qty }} {{ ing.unit }}
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-      <div v-if="checkedPrintItems.length > 0" class="print-section">
-        <h2>{{ t('recipes.form.printPreview.instructions') }}</h2>
-        <ul>
-          <li v-for="(item, i) in checkedPrintItems" :key="i">{{ item.text }}</li>
-        </ul>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -404,63 +405,6 @@ const getStatusClass = (status: string) => {
 @media screen {
   .print-only {
     display: none !important;
-  }
-}
-</style>
-
-<style>
-@media print {
-  @page {
-    margin: 0;
-  }
-  body * {
-    visibility: hidden;
-  }
-  #print-area-production, #print-area-production * {
-    visibility: visible;
-  }
-  #print-area-production {
-    position: absolute;
-    left: 0;
-    top: 0;
-    right: 0;
-    padding: 2cm;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    color: #000;
-  }
-  #print-area-production h1 {
-    font-size: 24pt;
-    font-weight: 900;
-    margin-bottom: 8pt;
-  }
-  #print-area-production .print-total {
-    font-size: 12pt;
-    font-weight: 700;
-    color: #555;
-    margin-bottom: 20pt;
-  }
-  #print-area-production .print-section {
-    margin-bottom: 16pt;
-  }
-  #print-area-production .print-section h2 {
-    font-size: 14pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #333;
-    border-bottom: 2pt solid #333;
-    padding-bottom: 4pt;
-    margin-bottom: 8pt;
-  }
-  #print-area-production ul {
-    list-style: disc;
-    padding-left: 20pt;
-    margin: 0;
-  }
-  #print-area-production li {
-    font-size: 11pt;
-    padding: 2pt 0;
-    line-height: 1.5;
   }
 }
 </style>

@@ -280,8 +280,38 @@ const checkedPrintItems = computed(() =>
 
 const doPrint = () => {
   isPrintPreviewOpen.value = false;
-  setTimeout(() => window.print(), 200);
+  const checkedItems = checkedPrintItems.value;
+  const pw = window.open('', '_blank');
+  if (!pw) return;
+  pw.document.write(`<!DOCTYPE html>
+<html>
+<head><title>${h(form.value.name)}</title>
+<style>
+  @page { margin: 2cm; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; color: #000; margin: 0; padding: 0; }
+  h1 { font-size: 24pt; font-weight: 900; margin-bottom: 4pt; }
+  .total { font-size: 12pt; font-weight: 700; color: #555; margin-bottom: 20pt; }
+  h2 { font-size: 14pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #333; border-bottom: 2pt solid #333; padding-bottom: 4pt; margin: 16pt 0 8pt; }
+  ul { list-style: disc; padding-left: 20pt; margin: 0; }
+  li { font-size: 11pt; padding: 2pt 0; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h1>${h(form.value.name)}</h1>
+  <p class="total">${t('recipes.form.totalWeight')}: ${fmtQty(totalWeight.value, 'kg')}</p>
+  <h2>${t('recipes.form.printPreview.components')}</h2>
+  <ul>
+    ${form.value.components.map((c: any) => `<li>${h(getCompName(c))} — ${(Number(c.value) || 0).toFixed(1)}% (${fmtQty(getCompAbsKg(c), getComponentUnit(c))})</li>`).join('')}
+  </ul>
+  ${checkedItems.length > 0 ? `<h2>${t('recipes.form.printPreview.instructions')}</h2>\n  <ul>\n    ${checkedItems.map((item: any) => `<li>${h(item.text)}</li>`).join('\n    ')}\n  </ul>` : ''}
+</body>
+</html>`);
+  pw.document.close();
+  pw.print();
 };
+
+const h = (s: string | number | undefined | null): string =>
+  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const addComponent = () => {
   const idx = form.value.components.length;
@@ -638,28 +668,6 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
       </div>
     </AppModal>
 
-    <!-- Printable Block (hidden on screen) -->
-    <div id="print-area" class="print-only">
-      <div class="print-header">
-        <h1>{{ form.name }}</h1>
-        <p class="print-total">{{ t('recipes.form.totalWeight') }}: {{ fmtQty(totalWeight, 'kg') }}</p>
-      </div>
-      <div class="print-section">
-        <h2>{{ t('recipes.form.printPreview.components') }}</h2>
-        <ul>
-          <li v-for="(comp, i) in form.components" :key="i">
-            {{ getCompName(comp) }} — {{ (comp.value || 0).toFixed(1) }}% ({{ fmtQty(getCompAbsKg(comp), getComponentUnit(comp)) }})
-          </li>
-        </ul>
-      </div>
-      <div class="print-section">
-        <h2>{{ t('recipes.form.printPreview.instructions') }}</h2>
-        <ul>
-          <li v-for="(item, i) in checkedPrintItems" :key="i">{{ item.text }}</li>
-        </ul>
-      </div>
-    </div>
-
     <!-- Calculation Modal -->
     <AppModal 
       :show="isCalcModalOpen" 
@@ -737,63 +745,6 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
 @media screen {
   .print-only {
     display: none !important;
-  }
-}
-</style>
-
-<style>
-@media print {
-  @page {
-    margin: 0;
-  }
-  body * {
-    visibility: hidden;
-  }
-  #print-area, #print-area * {
-    visibility: visible;
-  }
-  #print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    right: 0;
-    padding: 2cm;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    color: #000;
-  }
-  #print-area h1 {
-    font-size: 24pt;
-    font-weight: 900;
-    margin-bottom: 8pt;
-  }
-  #print-area .print-total {
-    font-size: 12pt;
-    font-weight: 700;
-    color: #555;
-    margin-bottom: 20pt;
-  }
-  #print-area .print-section {
-    margin-bottom: 16pt;
-  }
-  #print-area .print-section h2 {
-    font-size: 14pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #333;
-    border-bottom: 2pt solid #333;
-    padding-bottom: 4pt;
-    margin-bottom: 8pt;
-  }
-  #print-area ul {
-    list-style: disc;
-    padding-left: 20pt;
-    margin: 0;
-  }
-  #print-area li {
-    font-size: 11pt;
-    padding: 2pt 0;
-    line-height: 1.5;
   }
 }
 </style>
