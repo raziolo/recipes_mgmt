@@ -109,6 +109,37 @@ const deleteTask = async (taskId: number) => {
   }
 };
 
+const h = (s: string | number | undefined | null): string =>
+  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+const normalizeDisplay = (qty: number, unit: string): { qty: number; unit: string; decimals: number } => {
+  const u = unit.toLowerCase();
+  if (u === 'g' || u === 'gr') {
+    return { qty: Math.round(qty * 1000 * 100) / 100, unit: 'g', decimals: 1 };
+  }
+  if (u === 'kg') {
+    if (qty < 1) {
+      return { qty: Math.round(qty * 1000 * 100) / 100, unit: 'g', decimals: 1 };
+    }
+    return { qty: Math.round(qty * 1000) / 1000, unit: 'kg', decimals: 3 };
+  }
+  if (u === 'l') {
+    if (qty < 1) {
+      return { qty: Math.round(qty * 1000 * 100) / 100, unit: 'ml', decimals: 1 };
+    }
+    return { qty: Math.round(qty * 1000) / 1000, unit: 'L', decimals: 3 };
+  }
+  if (u === 'ml') {
+    return { qty: Math.round(qty * 1000 * 100) / 100, unit: 'ml', decimals: 1 };
+  }
+  return { qty: Math.round(qty * 1000) / 1000, unit, decimals: 0 };
+};
+
+const fmtQty = (qty: number, unit: string): string => {
+  const n = normalizeDisplay(qty, unit);
+  return `${n.qty.toFixed(n.decimals)} ${n.unit}`;
+};
+
 const isPrintPreviewOpen = ref(false);
 const printPreviewData = ref<any>(null);
 const printInstructions = ref<{ text: string; checked: boolean }[]>([]);
@@ -138,14 +169,20 @@ const doPrint = () => {
   const data = printPreviewData.value;
   const checkedItems = checkedPrintItems.value;
   if (!data) return;
-  const pw = window.open('', '_blank');
-  if (!pw) return;
-  pw.document.write(`<!DOCTYPE html>
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
+  document.body.appendChild(iframe);
+  const doc = iframe.contentWindow!.document;
+  doc.open();
+  doc.write(`<!DOCTYPE html>
 <html>
 <head><title>${h(data.recipe_name)}</title>
 <style>
-  @page { margin: 2cm; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; color: #000; margin: 0; padding: 0; }
+  @page { margin: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; color: #000; margin: 0; padding: 2cm; }
   h1 { font-size: 24pt; font-weight: 900; margin-bottom: 4pt; }
   .total { font-size: 12pt; font-weight: 700; color: #555; margin-bottom: 20pt; }
   h2 { font-size: 14pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #333; border-bottom: 2pt solid #333; padding-bottom: 4pt; margin: 16pt 0 8pt; }
@@ -155,21 +192,21 @@ const doPrint = () => {
 </head>
 <body>
   <h1>${h(data.recipe_name)}</h1>
-  <p class="total">${data.target_qty} ${data.target_unit}</p>
+  <p class="total">${fmtQty(data.target_qty, data.target_unit)}</p>
   <h2>${t('recipes.form.printPreview.components')}</h2>
   <ul>
-    ${data.ingredients.map((ing: any) => `<li>${h(ing.name)} — ${ing.qty} ${ing.unit}</li>`).join('')}
+    ${data.ingredients.map((ing: any) => `<li>${h(ing.name)} — ${fmtQty(ing.qty, ing.unit)}</li>`).join('')}
   </ul>
-  ${data.sub_recipes && data.sub_recipes.length > 0 ? '<h2>Sub-recipes</h2>\n  <ul>\n' + data.sub_recipes.map((sub: any) => `<li>${h(sub.recipe_name)} — ${sub.target_qty} ${sub.target_unit}${sub.ingredients ? '<ul>' + sub.ingredients.map((ing: any) => `<li>${h(ing.name)} — ${ing.qty} ${ing.unit}</li>`).join('') + '</ul>' : ''}</li>`).join('\n    ') + '\n  </ul>' : ''}
+  ${data.sub_recipes && data.sub_recipes.length > 0 ? '<h2>Sub-recipes</h2>\n  <ul>\n' + data.sub_recipes.map((sub: any) => `<li>${h(sub.recipe_name)} — ${fmtQty(sub.target_qty, sub.target_unit)}${sub.ingredients ? '<ul>' + sub.ingredients.map((ing: any) => `<li>${h(ing.name)} — ${fmtQty(ing.qty, ing.unit)}</li>`).join('') + '</ul>' : ''}</li>`).join('\n    ') + '\n  </ul>' : ''}
   ${checkedItems.length > 0 ? `<h2>${t('recipes.form.printPreview.instructions')}</h2>\n  <ul>\n    ${checkedItems.map((item: any) => `<li>${h(item.text)}</li>`).join('\n    ')}\n  </ul>` : ''}
 </body>
 </html>`);
-  pw.document.close();
-  pw.print();
+  doc.close();
+  iframe.contentWindow!.print();
+  const cleanup = () => { if (document.body.contains(iframe)) document.body.removeChild(iframe); };
+  iframe.contentWindow!.addEventListener('afterprint', cleanup);
+  setTimeout(cleanup, 5000);
 };
-
-const h = (s: string | number | undefined | null): string =>
-  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const deleteSession = async (id: number) => {
   if (!confirm(t('common.delete') + ' ' + t('production.session') + '?')) return;
