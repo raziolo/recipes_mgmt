@@ -37,7 +37,7 @@ class RecipeCalculator:
                 results['ingredients'].append({
                     'name': component.ingredient.name,
                     'qty': float(qty),
-                    'unit': component.unit or component.ingredient.unit
+                    'unit': component.unit or component.ingredient.unit,
                 })
             elif component.sub_recipe:
                 sub_calc = RecipeCalculator.calculate(component.sub_recipe, qty)

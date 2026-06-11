@@ -172,7 +172,7 @@ onUnmounted(() => {
           <button
             v-if="allowCreate"
             type="button"
-            @click="isOpen = false; $emit('create')"
+            @click.stop="isOpen = false; $emit('create')"
             class="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-bold text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30 border-t border-gray-100 dark:border-gray-700 transition-colors"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>

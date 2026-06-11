@@ -51,6 +51,11 @@ const openCreateIngredient = (index: number) => {
   isCreateIngredientOpen.value = true;
 };
 
+const cancelCreateIngredient = () => {
+  isCreateIngredientOpen.value = false;
+  createTargetIndex.value = null;
+};
+
 const saveNewIngredient = async () => {
   try {
     const res = await api.post('ingredients/', createForm.value);
@@ -64,6 +69,34 @@ const saveNewIngredient = async () => {
   } catch (error) {
     console.error('Error creating ingredient:', error);
   }
+};
+
+const fmtQty = (qty: number, unit: string): string => {
+  const n = normalizeDisplay(qty, unit);
+  return `${n.qty.toFixed(n.decimals)} ${n.unit}`;
+};
+
+const normalizeDisplay = (qty: number, unit: string): { qty: number; unit: string; decimals: number } => {
+  const u = unit.toLowerCase();
+  if (u === 'g' || u === 'gr') {
+    return { qty: Math.round(qty * 1000 * 100) / 100, unit: 'g', decimals: 1 };
+  }
+  if (u === 'kg') {
+    if (qty < 1) {
+      return { qty: Math.round(qty * 1000 * 100) / 100, unit: 'g', decimals: 1 };
+    }
+    return { qty: Math.round(qty * 1000) / 1000, unit: 'kg', decimals: 3 };
+  }
+  if (u === 'l') {
+    if (qty < 1) {
+      return { qty: Math.round(qty * 1000 * 100) / 100, unit: 'ml', decimals: 1 };
+    }
+    return { qty: Math.round(qty * 1000) / 1000, unit: 'L', decimals: 3 };
+  }
+  if (u === 'ml') {
+    return { qty: Math.round(qty * 1000 * 100) / 100, unit: 'ml', decimals: 1 };
+  }
+  return { qty: Math.round(qty * 1000) / 1000, unit, decimals: 0 };
 };
 
 const normalizeKg = (qty: number, unit: string): number => {
@@ -107,6 +140,8 @@ const pctSum = computed(() => {
 });
 
 const openModal = async (recipe: Recipe | null = null) => {
+  isCreateIngredientOpen.value = false;
+  createTargetIndex.value = null;
   if (recipe) {
     editingRecipe.value = { ...recipe };
     const cloned = JSON.parse(JSON.stringify(recipe));
@@ -129,6 +164,8 @@ const closeModal = () => {
   editingRecipe.value = null;
   componentQty.value = {};
   form.value = { name: '', instructions: '', notes: '', components: [] };
+  isCreateIngredientOpen.value = false;
+  createTargetIndex.value = null;
 };
 
 const addComponent = () => {
@@ -276,131 +313,130 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
       :title="editingRecipe ? t('common.edit') : t('recipes.createBtn')" 
       @close="closeModal"
     >
-      <form @submit.prevent="saveRecipe" class="space-y-6">
-        <div>
-          <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.name') }}</label>
-          <input v-model="form.name" type="text" required class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
-        </div>
+      <form @submit.prevent="isCreateIngredientOpen ? saveNewIngredient() : saveRecipe()" class="space-y-6">
+        <template v-if="!isCreateIngredientOpen">
+          <div>
+            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.name') }}</label>
+            <input v-model="form.name" type="text" required class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
+          </div>
 
-        <!-- Components -->
-        <div>
-          <div class="flex justify-between items-center mb-4">
-            <h4 class="text-xs font-black text-gray-400 uppercase tracking-widest">{{ t('recipes.form.components') }}</h4>
-            <button type="button" @click="addComponent" class="text-xs bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 px-3 py-1.5 rounded-lg font-black hover:bg-primary-100 transition-all flex items-center uppercase tracking-tighter">
-              <PlusIcon class="w-4 h-4 mr-1" /> {{ t('recipes.form.addComponent') }}
+          <!-- Components -->
+          <div>
+            <div class="flex justify-between items-center mb-4">
+              <h4 class="text-xs font-black text-gray-400 uppercase tracking-widest">{{ t('recipes.form.components') }}</h4>
+              <button type="button" @click="addComponent" class="text-xs bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 px-3 py-1.5 rounded-lg font-black hover:bg-primary-100 transition-all flex items-center uppercase tracking-tighter">
+                <PlusIcon class="w-4 h-4 mr-1" /> {{ t('recipes.form.addComponent') }}
+              </button>
+            </div>
+
+            <div v-if="form.components.length > 0" class="mb-3">
+              <div class="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                <div class="h-full rounded-full transition-all duration-300" :style="{ width: Math.min(pctSum, 100) + '%' }" :class="pctSum > 100.1 ? 'bg-red-500' : 'bg-primary-500'" />
+              </div>
+              <p class="mt-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex justify-between">
+                <span>{{ t('recipes.form.totalWeight') }}: {{ totalActualQty.toFixed(1) }}</span>
+                <span :class="pctSum > 100.1 ? 'text-red-500' : 'text-primary-500'">{{ pctSum.toFixed(1) }}%</span>
+              </p>
+            </div>
+            
+            <div class="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+              <div v-for="(comp, index) in form.components" :key="index" class="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-700 space-y-2">
+                <div class="flex bg-gray-200/50 dark:bg-gray-800 rounded-lg p-0.5 w-fit border border-gray-200 dark:border-gray-700">
+                  <button type="button" @click="setComponentType(comp, 'ingredient')" class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all" :class="getComponentType(comp) === 'ingredient' ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+                    {{ t('recipes.form.ingredient') }}
+                  </button>
+                  <button type="button" @click="setComponentType(comp, 'sub_recipe')" class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all" :class="getComponentType(comp) === 'sub_recipe' ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+                    {{ t('recipes.form.subRecipe') }}
+                  </button>
+                </div>
+                <ComboBox
+                  v-if="getComponentType(comp) === 'ingredient'"
+                  v-model="comp.ingredient"
+                  :options="ingredients"
+                  :placeholder="t('recipes.form.selectIngredient')"
+                  :allow-create="true"
+                  no-results-label="Nessun risultato"
+                  clear-label="Annulla selezione"
+                  :create-label="t('ingredients.addBtn')"
+                  @create="openCreateIngredient(index)"
+                />
+                <ComboBox
+                  v-else
+                  v-model="comp.sub_recipe"
+                  :options="recipes.filter(r => r.id !== editingRecipe?.id)"
+                  :placeholder="t('recipes.form.selectRecipe')"
+                  no-results-label="Nessun risultato"
+                />
+                <div class="flex items-center gap-2">
+                  <input v-model="componentQty[index].qty" type="number" step="0.1" min="0" :placeholder="t('recipes.form.qty')" class="flex-1 min-w-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold" />
+                  <select v-model="componentQty[index].unit" class="w-16 shrink-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
+                    <option value="kg">kg</option>
+                    <option value="g">g</option>
+                    <option value="L">L</option>
+                    <option value="ml">ml</option>
+                    <option value="pcs">pcs</option>
+                  </select>
+                  <span class="w-12 text-right text-xs font-black text-primary-600 dark:text-primary-400">{{ getCompPct(index).toFixed(1) }}%</span>
+                  <button @click="removeComponent(index)" type="button" class="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all shrink-0">
+                    <TrashIcon class="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <div v-if="form.components.length === 0" class="text-center py-10 text-gray-400 italic bg-gray-50/50 dark:bg-gray-900/30 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
+                {{ t('recipes.form.noComponents') }}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.instructions') }}</label>
+            <textarea v-model="form.instructions" rows="4" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3"></textarea>
+          </div>
+        </template>
+
+        <template v-else>
+          <div>
+            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('ingredients.form.name') }}</label>
+            <input v-model="createForm.name" type="text" required class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('ingredients.form.unit') }}</label>
+              <select v-model="createForm.unit" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3 font-bold">
+                <option value="kg">kg</option>
+                <option value="g">g</option>
+                <option value="L">L</option>
+                <option value="ml">ml</option>
+                <option value="pcs">pcs</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('ingredients.form.category') }}</label>
+              <input v-model="createForm.category" type="text" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
+            </div>
+          </div>
+        </template>
+
+        <template v-if="!isCreateIngredientOpen">
+          <div class="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+            <button type="button" @click="closeModal" class="px-6 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              {{ t('common.cancel') }}
+            </button>
+            <button type="submit" :disabled="isLoading" class="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">
+              {{ isLoading ? '...' : t('common.save') }}
             </button>
           </div>
-
-          <div v-if="form.components.length > 0" class="mb-3">
-            <div class="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-              <div class="h-full rounded-full transition-all duration-300" :style="{ width: Math.min(pctSum, 100) + '%' }" :class="pctSum > 100.1 ? 'bg-red-500' : 'bg-primary-500'" />
-            </div>
-            <p class="mt-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex justify-between">
-              <span>{{ t('recipes.form.totalWeight') }}: {{ totalActualQty.toFixed(1) }}</span>
-              <span :class="pctSum > 100.1 ? 'text-red-500' : 'text-primary-500'">{{ pctSum.toFixed(1) }}%</span>
-            </p>
+        </template>
+        <template v-else>
+          <div class="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+            <button type="button" @click="cancelCreateIngredient" class="px-6 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              {{ t('common.cancel') }}
+            </button>
+            <button type="submit" :disabled="isLoading" class="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">
+              {{ isLoading ? '...' : t('common.save') }}
+            </button>
           </div>
-          
-          <div class="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-            <div v-for="(comp, index) in form.components" :key="index" class="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-700 space-y-2">
-              <div class="flex bg-gray-200/50 dark:bg-gray-800 rounded-lg p-0.5 w-fit border border-gray-200 dark:border-gray-700">
-                <button type="button" @click="setComponentType(comp, 'ingredient')" class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all" :class="getComponentType(comp) === 'ingredient' ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
-                  {{ t('recipes.form.ingredient') }}
-                </button>
-                <button type="button" @click="setComponentType(comp, 'sub_recipe')" class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all" :class="getComponentType(comp) === 'sub_recipe' ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
-                  {{ t('recipes.form.subRecipe') }}
-                </button>
-              </div>
-              <ComboBox
-                v-if="getComponentType(comp) === 'ingredient'"
-                v-model="comp.ingredient"
-                :options="ingredients"
-                :placeholder="t('recipes.form.selectIngredient')"
-                :allow-create="true"
-                no-results-label="Nessun risultato"
-                clear-label="Annulla selezione"
-                :create-label="t('ingredients.addBtn')"
-                @create="openCreateIngredient(index)"
-              />
-              <ComboBox
-                v-else
-                v-model="comp.sub_recipe"
-                :options="recipes.filter(r => r.id !== editingRecipe?.id)"
-                :placeholder="t('recipes.form.selectRecipe')"
-                no-results-label="Nessun risultato"
-              />
-              <div class="flex items-center gap-2">
-                <input v-model="componentQty[index].qty" type="number" step="0.1" min="0" :placeholder="t('recipes.form.qty')" class="flex-1 min-w-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold" />
-                <select v-model="componentQty[index].unit" class="w-16 shrink-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
-                  <option value="kg">kg</option>
-                  <option value="g">g</option>
-                  <option value="L">L</option>
-                  <option value="ml">ml</option>
-                  <option value="pcs">pcs</option>
-                </select>
-                <span class="w-12 text-right text-xs font-black text-primary-600 dark:text-primary-400">{{ getCompPct(index).toFixed(1) }}%</span>
-                <button @click="removeComponent(index)" type="button" class="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all shrink-0">
-                  <TrashIcon class="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-            <div v-if="form.components.length === 0" class="text-center py-10 text-gray-400 italic bg-gray-50/50 dark:bg-gray-900/30 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
-              {{ t('recipes.form.noComponents') }}
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.instructions') }}</label>
-          <textarea v-model="form.instructions" rows="4" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3"></textarea>
-        </div>
-
-        <div class="flex flex-col sm:flex-row justify-end gap-3 pt-2">
-          <button type="button" @click="closeModal" class="px-6 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            {{ t('common.cancel') }}
-          </button>
-          <button type="submit" :disabled="isLoading" class="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">
-            {{ isLoading ? '...' : t('common.save') }}
-          </button>
-        </div>
-      </form>
-    </AppModal>
-
-    <!-- Create Ingredient Mini Modal -->
-    <AppModal
-      :show="isCreateIngredientOpen"
-      :title="t('ingredients.addBtn')"
-      @close="isCreateIngredientOpen = false"
-    >
-      <form @submit.prevent="saveNewIngredient" class="space-y-5">
-        <div>
-          <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('ingredients.form.name') }}</label>
-          <input v-model="createForm.name" type="text" required class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('ingredients.form.unit') }}</label>
-            <select v-model="createForm.unit" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3 font-bold">
-              <option value="kg">kg</option>
-              <option value="g">g</option>
-              <option value="L">L</option>
-              <option value="ml">ml</option>
-              <option value="pcs">pcs</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('ingredients.form.category') }}</label>
-            <input v-model="createForm.category" type="text" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
-          </div>
-        </div>
-        <div class="flex justify-end gap-3 pt-2">
-          <button type="button" @click="isCreateIngredientOpen = false" class="px-5 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            {{ t('common.cancel') }}
-          </button>
-          <button type="submit" class="px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 shadow-lg shadow-primary-500/20">
-            {{ t('common.save') }}
-          </button>
-        </div>
+        </template>
       </form>
     </AppModal>
 
@@ -435,7 +471,7 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
             <div v-for="ing in calcResults.ingredients" :key="ing.name" class="flex justify-between items-center group">
               <span class="text-gray-400 group-hover:text-white transition-colors">{{ ing.name }}</span>
               <div class="flex-1 border-b border-gray-800 mx-4 border-dotted"></div>
-              <span class="text-green-400 font-bold whitespace-nowrap">{{ Number(ing.qty).toFixed(3) }} <span class="text-[10px] text-gray-600 uppercase">{{ ing.unit }}</span></span>
+              <span class="text-green-400 font-bold whitespace-nowrap">{{ fmtQty(ing.qty, ing.unit) }}</span>
             </div>
           </div>
           
@@ -447,12 +483,12 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
             <div v-for="sub in calcResults.sub_recipes" :key="sub.recipe_name" class="mb-6 bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
               <div class="flex justify-between font-black text-white mb-3">
                 <span>{{ sub.recipe_name }}</span>
-                <span class="text-primary-400">{{ Number(sub.target_qty).toFixed(3) }} <span class="text-[10px] text-gray-500">{{ sub.target_unit }}</span></span>
+                <span class="text-primary-400">{{ fmtQty(sub.target_qty, sub.target_unit) }}</span>
               </div>
               <div class="space-y-1">
                 <div v-for="ing in sub.ingredients" :key="ing.name" class="pl-4 text-xs flex justify-between">
                   <span class="text-gray-500">{{ ing.name }}</span>
-                  <span class="text-gray-300">{{ Number(ing.qty).toFixed(3) }} {{ ing.unit }}</span>
+                  <span class="text-gray-300">{{ fmtQty(ing.qty, ing.unit) }}</span>
                 </div>
               </div>
             </div>

@@ -1,6 +1,24 @@
 import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 from escpos.printer import Dummy, Usb, File
+
+
+def _normalize_display_qty(qty_kg: float, unit: str) -> Tuple[float, str]:
+    u = unit.lower()
+    if u in ('g', 'gr'):
+        return round(qty_kg * 1000, 2), 'g'
+    if u == 'kg':
+        if qty_kg < 1:
+            return round(qty_kg * 1000, 2), 'g'
+        return round(qty_kg, 3), 'kg'
+    if u == 'l':
+        if qty_kg < 1:
+            return round(qty_kg * 1000, 2), 'ml'
+        return round(qty_kg, 3), 'L'
+    if u == 'ml':
+        return round(qty_kg * 1000, 2), 'ml'
+    return round(qty_kg, 3), unit
+
 
 class ProductionSheetPrinter:
     def __init__(self, printer_type='dummy', **kwargs):
@@ -28,18 +46,20 @@ class ProductionSheetPrinter:
         p.text("INGREDIENTS:\n")
         for ing in task_data.get('ingredients', []):
             name = ing.get('name') or 'Unknown'
-            qty = float(ing.get('qty') or 0)
-            unit = ing.get('unit') or ''
-            qty_str = f"{qty:.3f} {unit}"
+            qty_raw = float(ing.get('qty') or 0)
+            unit_raw = ing.get('unit') or ''
+            norm_qty, norm_unit = _normalize_display_qty(qty_raw, unit_raw)
+            qty_str = f"{norm_qty:.{2 if norm_unit in ('g','ml') else 3}f} {norm_unit}"
             p.text(f"{name:<30} {qty_str:>11}\n")
 
         if task_data.get('sub_recipes'):
             p.text("\nSUB-RECIPES:\n")
             for sub in task_data['sub_recipes']:
                 s_name = sub.get('recipe_name') or 'Sub'
-                s_qty = sub.get('target_qty', 0)
-                s_unit = sub.get('target_unit', '')
-                p.text(f"- {s_name}: {s_qty} {s_unit}\n")
+                s_qty_raw = sub.get('target_qty', 0)
+                s_unit_raw = sub.get('target_unit', '')
+                sn_qty, sn_unit = _normalize_display_qty(s_qty_raw, s_unit_raw)
+                p.text(f"- {s_name}: {sn_qty:.{2 if sn_unit in ('g','ml') else 3}f} {sn_unit}\n")
 
         p.text("-" * 42 + "\n")
         p.text("INSTRUCTIONS:\n")
