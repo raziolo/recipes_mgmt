@@ -406,7 +406,9 @@ const getStatusClass = (status: string) => {
     display: none !important;
   }
 }
+</style>
 
+<style>
 @media print {
   body * {
     visibility: hidden;

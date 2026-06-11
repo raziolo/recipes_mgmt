@@ -739,7 +739,9 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
     display: none !important;
   }
 }
+</style>
 
+<style>
 @media print {
   body * {
     visibility: hidden;
