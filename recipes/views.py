@@ -7,13 +7,21 @@ from .models import Recipe
 from .serializers import RecipeSerializer
 from .services import RecipeCalculator
 
+
+class DecimalFloatEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
+
 class RecipeViewSet(viewsets.ModelViewSet):
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
 
     def perform_update(self, serializer):
-        old = json.loads(json.dumps(self.get_serializer(serializer.instance).data, default=str))
-        new = json.loads(json.dumps(serializer.validated_data, default=str))
+        old = json.loads(json.dumps(self.get_serializer(serializer.instance).data))
+        new = json.loads(json.dumps(serializer.validated_data, cls=DecimalFloatEncoder))
 
         def strip_meta(d):
             if isinstance(d, dict):

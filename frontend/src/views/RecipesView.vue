@@ -33,7 +33,12 @@ const form = ref<Recipe>({
 const initialFormSnapshot = ref('');
 const formDirty = computed(() => {
   const c = JSON.parse(JSON.stringify(form.value));
-  c.components?.forEach((x: any) => delete x._type);
+  c.components?.forEach((x: any) => {
+    delete x._type;
+    delete x.id;
+    delete x.ingredient_name;
+    delete x.sub_recipe_name;
+  });
   return JSON.stringify(c) !== initialFormSnapshot.value;
 });
 
@@ -215,12 +220,17 @@ const openModal = async (recipe: Recipe | null = null) => {
     editingRecipe.value = null;
     form.value = { name: '', instructions: '', notes: '', components: [] };
   }
-  const snap = JSON.parse(JSON.stringify(form.value));
-  snap.components?.forEach((x: any) => delete x._type);
-  initialFormSnapshot.value = JSON.stringify(snap);
   totalWeight.value = 1;
   await nextTick();
   rebuildRawFromPct();
+  const snap = JSON.parse(JSON.stringify(form.value));
+  snap.components?.forEach((x: any) => {
+    delete x._type;
+    delete x.id;
+    delete x.ingredient_name;
+    delete x.sub_recipe_name;
+  });
+  initialFormSnapshot.value = JSON.stringify(snap);
   isModalOpen.value = true;
 };
 
