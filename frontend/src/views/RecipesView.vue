@@ -743,6 +743,9 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
 
 <style>
 @media print {
+  @page {
+    margin: 0;
+  }
   body * {
     visibility: hidden;
   }
@@ -753,7 +756,7 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
+    right: 0;
     padding: 2cm;
     font-family: 'Segoe UI', system-ui, sans-serif;
     color: #000;
