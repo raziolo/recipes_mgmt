@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from decimal import Decimal
+import json
 from .models import Recipe
 from .serializers import RecipeSerializer
 from .services import RecipeCalculator
@@ -9,6 +10,28 @@ from .services import RecipeCalculator
 class RecipeViewSet(viewsets.ModelViewSet):
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
+
+    def perform_update(self, serializer):
+        old = json.loads(json.dumps(self.get_serializer(serializer.instance).data, default=str))
+        new = json.loads(json.dumps(serializer.validated_data, default=str))
+
+        def strip_meta(d):
+            if isinstance(d, dict):
+                d.pop('id', None)
+                d.pop('ingredient_name', None)
+                d.pop('sub_recipe_name', None)
+                for v in d.values():
+                    strip_meta(v)
+            elif isinstance(d, list):
+                for item in d:
+                    strip_meta(item)
+
+        strip_meta(old)
+        strip_meta(new)
+
+        if old == new:
+            return
+        serializer.save()
 
     @action(detail=True, methods=['get'])
     def calculate(self, request, pk=None):

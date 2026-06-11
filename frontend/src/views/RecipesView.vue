@@ -30,6 +30,13 @@ const form = ref<Recipe>({
   components: []
 });
 
+const initialFormSnapshot = ref('');
+const formDirty = computed(() => {
+  const c = JSON.parse(JSON.stringify(form.value));
+  c.components?.forEach((x: any) => delete x._type);
+  return JSON.stringify(c) !== initialFormSnapshot.value;
+});
+
 const fetchData = async () => {
   try {
     const [recipesRes, ingredientsRes] = await Promise.all([
@@ -99,6 +106,10 @@ const normalizeDisplay = (qty: number, unit: string): { qty: number; unit: strin
   return { qty: Math.round(qty * 1000) / 1000, unit, decimals: 0 };
 };
 
+const totalWeight = ref(1);
+const isExpertMode = ref(false);
+const componentRaw = ref<Record<number, { qty: number; unit: string }>>({});
+
 const normalizeKg = (qty: number, unit: string): number => {
   const u = unit.toLowerCase();
   if (u === 'kg') return qty;
@@ -108,104 +119,147 @@ const normalizeKg = (qty: number, unit: string): number => {
   return qty;
 };
 
-const componentQty = ref<Record<number, { qty: number; unit: string }>>({});
-
-const getCompKg = (index: number): number => {
-  const entry = componentQty.value[index];
-  if (!entry || !entry.qty || entry.qty <= 0) return 0;
-  return normalizeKg(entry.qty, entry.unit);
+const getComponentUnit = (comp: any): string => {
+  if (comp.ingredient) {
+    const ing = ingredients.value.find(i => i.id === comp.ingredient);
+    return ing?.unit || 'kg';
+  }
+  return 'kg';
 };
 
-const totalActualQty = computed(() => {
-  let sum = 0;
-  for (const key of Object.keys(componentQty.value)) {
-    sum += getCompKg(parseInt(key));
-  }
-  return Math.round(sum * 10) / 10;
-});
-
-const getCompPct = (index: number) => {
-  const total = totalActualQty.value;
-  const kg = getCompKg(index);
-  if (total === 0 || kg === 0) return 0;
-  return Math.round((kg / total) * 1000) / 10;
+const getComponentAbs = (comp: any): string => {
+  const pct = Number(comp.value) || 0;
+  const absKg = (pct / 100) * totalWeight.value;
+  return fmtQty(absKg, getComponentUnit(comp));
 };
 
 const pctSum = computed(() => {
   let sum = 0;
-  for (let i = 0; i < form.value.components.length; i++) {
-    sum += getCompPct(i);
+  for (const comp of form.value.components) {
+    sum += Number(comp.value) || 0;
   }
   return Math.round(sum * 10) / 10;
+});
+
+const calcPctFromRaw = (index: number) => {
+  const entry = componentRaw.value[index];
+  const comp = form.value.components[index];
+  if (!entry || !comp) return;
+  const kg = entry.qty > 0 && totalWeight.value > 0 ? normalizeKg(entry.qty, entry.unit) : 0;
+  comp.value = kg > 0 ? Math.round((kg / totalWeight.value) * 100 * 10) / 10 : 0;
+};
+
+const reverseCalcRaw = (comp: any): { qty: number; unit: string } => {
+  const pct = Number(comp.value) || 0;
+  const absKg = totalWeight.value > 0 ? (pct / 100) * totalWeight.value : 0;
+  const unit = getComponentUnit(comp);
+  const u = unit.toLowerCase();
+  if (u === 'g' || u === 'gr') {
+    return { qty: Math.round(absKg * 1000 * 100) / 100, unit: 'g' };
+  }
+  if (u === 'ml') {
+    return { qty: Math.round(absKg * 1000 * 100) / 100, unit: 'ml' };
+  }
+  if (u === 'L') {
+    return { qty: Math.round(absKg * 1000) / 1000, unit: 'L' };
+  }
+  return { qty: Math.round(absKg * 1000) / 1000, unit };
+};
+
+const rebuildRawFromPct = () => {
+  const raw: Record<number, { qty: number; unit: string }> = {};
+  form.value.components.forEach((comp: any, i: number) => {
+    raw[i] = reverseCalcRaw(comp);
+  });
+  componentRaw.value = raw;
+};
+
+const toggleInputMode = () => {
+  isExpertMode.value = !isExpertMode.value;
+  if (!isExpertMode.value) {
+    rebuildRawFromPct();
+  }
+};
+
+watch(componentRaw, () => {
+  if (isExpertMode.value) return;
+  for (const key of Object.keys(componentRaw.value)) {
+    calcPctFromRaw(parseInt(key));
+  }
+}, { deep: true });
+
+watch(totalWeight, (newVal, oldVal) => {
+  if (isExpertMode.value || form.value.components.length === 0 || !oldVal || oldVal <= 0) return;
+  const scale = newVal / oldVal;
+  if (scale === 1) return;
+  const raw: Record<number, { qty: number; unit: string }> = {};
+  form.value.components.forEach((_c: any, i: number) => {
+    const entry = componentRaw.value[i];
+    raw[i] = {
+      qty: entry?.qty ? Math.round(entry.qty * scale * 1000) / 1000 : 0,
+      unit: entry?.unit || 'kg',
+    };
+  });
+  componentRaw.value = raw;
 });
 
 const openModal = async (recipe: Recipe | null = null) => {
   isCreateIngredientOpen.value = false;
   createTargetIndex.value = null;
+  isExpertMode.value = false;
   if (recipe) {
     editingRecipe.value = { ...recipe };
     const cloned = JSON.parse(JSON.stringify(recipe));
     form.value = cloned;
-    componentQty.value = {};
-    cloned.components.forEach((comp: any, i: number) => {
-      componentQty.value[i] = { qty: Number(comp.value) || 0, unit: comp.unit || 'kg' };
-    });
   } else {
     editingRecipe.value = null;
     form.value = { name: '', instructions: '', notes: '', components: [] };
-    componentQty.value = {};
   }
+  const snap = JSON.parse(JSON.stringify(form.value));
+  snap.components?.forEach((x: any) => delete x._type);
+  initialFormSnapshot.value = JSON.stringify(snap);
+  totalWeight.value = 1;
   await nextTick();
+  rebuildRawFromPct();
   isModalOpen.value = true;
 };
 
 const closeModal = () => {
   isModalOpen.value = false;
   editingRecipe.value = null;
-  componentQty.value = {};
   form.value = { name: '', instructions: '', notes: '', components: [] };
   isCreateIngredientOpen.value = false;
   createTargetIndex.value = null;
+  isExpertMode.value = false;
+  componentRaw.value = {};
+  initialFormSnapshot.value = '';
 };
 
 const addComponent = () => {
   const idx = form.value.components.length;
   form.value.components.push({ value: 0, unit: 'kg' });
-  componentQty.value[idx] = { qty: 0, unit: 'kg' };
+  componentRaw.value[idx] = { qty: 0, unit: 'kg' };
 };
 
 const removeComponent = (index: number) => {
   form.value.components.splice(index, 1);
-  const newMap: Record<number, { qty: number; unit: string }> = {};
-  Object.keys(componentQty.value).forEach((k) => {
+  const newRaw: Record<number, { qty: number; unit: string }> = {};
+  Object.keys(componentRaw.value).forEach((k) => {
     const ki = parseInt(k);
-    if (ki < index) newMap[ki] = componentQty.value[ki];
-    else if (ki > index) newMap[ki - 1] = componentQty.value[ki];
+    if (ki < index) newRaw[ki] = componentRaw.value[ki];
+    else if (ki > index) newRaw[ki - 1] = componentRaw.value[ki];
   });
-  componentQty.value = newMap;
+  componentRaw.value = newRaw;
 };
-
-const deducePercentages = () => {
-  const total = totalActualQty.value;
-  if (total === 0) return;
-  form.value.components.forEach((comp, i) => {
-    const kg = getCompKg(i);
-    if (kg > 0) {
-      comp.value = Math.round((kg / total) * 1000) / 10;
-    } else {
-      comp.value = 0;
-    }
-  });
-};
-
-watch(componentQty, () => deducePercentages(), { deep: true });
 
 const saveRecipe = async () => {
   isLoading.value = true;
   try {
-    deducePercentages();
     const payload = JSON.parse(JSON.stringify(form.value));
-    payload.components.forEach((c: any) => { delete c._type; });
+    payload.components.forEach((c: any) => {
+      delete c._type;
+      c.unit = getComponentUnit(c);
+    });
     if (editingRecipe.value?.id) {
       await api.put(`recipes/${editingRecipe.value.id}/`, payload);
     } else {
@@ -330,15 +384,26 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
             </div>
 
             <div v-if="form.components.length > 0" class="mb-3">
+              <div class="flex items-center gap-3 mb-2">
+                <label class="text-xs font-black text-gray-400 uppercase tracking-widest shrink-0">{{ t('recipes.form.totalWeight') }}</label>
+                <input v-model.number="totalWeight" type="number" step="0.01" min="0" class="w-24 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold text-center" />
+                <span class="text-xs font-black text-gray-400 uppercase">kg</span>
+              </div>
               <div class="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                 <div class="h-full rounded-full transition-all duration-300" :style="{ width: Math.min(pctSum, 100) + '%' }" :class="pctSum > 100.1 ? 'bg-red-500' : 'bg-primary-500'" />
               </div>
               <p class="mt-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex justify-between">
-                <span>{{ t('recipes.form.totalWeight') }}: {{ totalActualQty.toFixed(1) }}</span>
+                <span>{{ fmtQty(totalWeight, 'kg') }}</span>
                 <span :class="pctSum > 100.1 ? 'text-red-500' : 'text-primary-500'">{{ pctSum.toFixed(1) }}%</span>
               </p>
             </div>
             
+            <div v-if="!isExpertMode && form.components.length > 0" class="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+              <p class="text-xs font-medium text-amber-700 dark:text-amber-300">
+                Inserisci le quantità nel loro formato naturale (kg, g, L, ml). Le percentuali vengono calcolate automaticamente in base al peso totale.
+              </p>
+            </div>
+
             <div class="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
               <div v-for="(comp, index) in form.components" :key="index" class="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-700 space-y-2">
                 <div class="flex bg-gray-200/50 dark:bg-gray-800 rounded-lg p-0.5 w-fit border border-gray-200 dark:border-gray-700">
@@ -367,23 +432,42 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
                   :placeholder="t('recipes.form.selectRecipe')"
                   no-results-label="Nessun risultato"
                 />
-                <div class="flex items-center gap-2">
-                  <input v-model="componentQty[index].qty" type="number" step="0.1" min="0" :placeholder="t('recipes.form.qty')" class="flex-1 min-w-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold" />
-                  <select v-model="componentQty[index].unit" class="w-16 shrink-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
-                    <option value="kg">kg</option>
-                    <option value="g">g</option>
-                    <option value="L">L</option>
-                    <option value="ml">ml</option>
-                    <option value="pcs">pcs</option>
-                  </select>
-                  <span class="w-12 text-right text-xs font-black text-primary-600 dark:text-primary-400">{{ getCompPct(index).toFixed(1) }}%</span>
-                  <button @click="removeComponent(index)" type="button" class="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all shrink-0">
-                    <TrashIcon class="w-5 h-5" />
-                  </button>
-                </div>
+                <template v-if="isExpertMode">
+                  <div class="flex items-center gap-2">
+                    <input v-model.number="comp.value" type="number" step="0.01" min="0" class="w-20 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold text-right" />
+                    <span class="text-xs font-black text-gray-400 mr-2">%</span>
+                    <span class="text-xs font-bold text-primary-600 dark:text-primary-400 whitespace-nowrap">→ {{ getComponentAbs(comp) }}</span>
+                    <button @click="removeComponent(index)" type="button" class="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all shrink-0 ml-auto">
+                      <TrashIcon class="w-5 h-5" />
+                    </button>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="flex items-center gap-2">
+                    <input v-model.number="componentRaw[index].qty" type="number" step="0.01" min="0" class="flex-1 min-w-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold" />
+                    <select v-model="componentRaw[index].unit" class="w-16 shrink-0 text-sm p-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 font-bold">
+                      <option value="kg">kg</option>
+                      <option value="g">g</option>
+                      <option value="L">L</option>
+                      <option value="ml">ml</option>
+                      <option value="pcs">pcs</option>
+                    </select>
+                    <span class="text-xs font-bold text-primary-600 dark:text-primary-400 whitespace-nowrap w-14 text-right">{{ (comp.value || 0).toFixed(1) }}%</span>
+                    <button @click="removeComponent(index)" type="button" class="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all shrink-0">
+                      <TrashIcon class="w-5 h-5" />
+                    </button>
+                  </div>
+                </template>
               </div>
               <div v-if="form.components.length === 0" class="text-center py-10 text-gray-400 italic bg-gray-50/50 dark:bg-gray-900/30 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
                 {{ t('recipes.form.noComponents') }}
+              </div>
+
+              <div v-if="form.components.length > 0" class="flex justify-center pt-1">
+                <button type="button" @click="toggleInputMode" class="text-xs font-bold text-primary-600 dark:text-primary-400 hover:text-primary-800 transition-colors flex items-center gap-1.5 bg-primary-50 dark:bg-primary-900/20 px-3 py-1.5 rounded-lg">
+                  <span class="text-sm">&#x21BB;</span>
+                  {{ isExpertMode ? 'Passa a input quantità' : 'Passa a input percentuale' }}
+                </button>
               </div>
             </div>
           </div>
@@ -422,7 +506,7 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
             <button type="button" @click="closeModal" class="px-6 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
               {{ t('common.cancel') }}
             </button>
-            <button type="submit" :disabled="isLoading" class="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">
+            <button type="submit" :disabled="!formDirty || isLoading" class="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">
               {{ isLoading ? '...' : t('common.save') }}
             </button>
           </div>
@@ -453,7 +537,7 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
           <div class="flex-1 w-full">
             <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Target Quantity (kg)</label>
             <div class="relative">
-              <input v-model="calcQty" type="number" step="0.1" class="block w-full p-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-900 font-black text-xl text-primary-600" />
+              <input v-model="calcQty" type="number" step="0.01" class="block w-full p-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-900 font-black text-xl text-primary-600" />
               <div class="absolute right-4 top-1/2 -translate-y-1/2 font-black text-gray-400 uppercase">kg</div>
             </div>
           </div>
