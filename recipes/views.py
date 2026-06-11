@@ -8,11 +8,17 @@ from .serializers import RecipeSerializer
 from .services import RecipeCalculator
 
 
-class DecimalFloatEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Decimal):
-            return float(obj)
-        return super().default(obj)
+def _clean(data):
+    """Recursively convert validated_data to JSON-safe primitives."""
+    if isinstance(data, dict):
+        return {k: _clean(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_clean(item) for item in data]
+    if isinstance(data, Decimal):
+        return float(data)
+    if hasattr(data, 'pk'):  # Django model instance (FK)
+        return data.pk
+    return data
 
 
 class RecipeViewSet(viewsets.ModelViewSet):
@@ -20,8 +26,8 @@ class RecipeViewSet(viewsets.ModelViewSet):
     serializer_class = RecipeSerializer
 
     def perform_update(self, serializer):
-        old = json.loads(json.dumps(self.get_serializer(serializer.instance).data))
-        new = json.loads(json.dumps(serializer.validated_data, cls=DecimalFloatEncoder))
+        old = json.loads(json.dumps(_clean(self.get_serializer(serializer.instance).data)))
+        new = json.loads(json.dumps(_clean(serializer.validated_data)))
 
         def strip_meta(d):
             if isinstance(d, dict):

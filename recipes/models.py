@@ -5,6 +5,7 @@ class Recipe(models.Model):
     name = models.CharField(max_length=255, unique=True)
     instructions = models.TextField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
+    total_weight = models.DecimalField(max_digits=10, decimal_places=3, default=1.0)
 
     def __str__(self):
         return self.name

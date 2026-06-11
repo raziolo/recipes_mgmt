@@ -21,6 +21,7 @@ export interface Recipe {
   name: string;
   instructions?: string;
   notes?: string;
+  total_weight?: number;
   components: RecipeComponent[];
 }
 

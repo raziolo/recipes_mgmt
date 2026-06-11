@@ -27,6 +27,7 @@ const form = ref<Recipe>({
   name: '',
   instructions: '',
   notes: '',
+  total_weight: 1,
   components: []
 });
 
@@ -197,6 +198,7 @@ watch(totalWeight, (newVal, oldVal) => {
   if (isExpertMode.value || form.value.components.length === 0 || !oldVal || oldVal <= 0) return;
   const scale = newVal / oldVal;
   if (scale === 1) return;
+  form.value.total_weight = newVal;
   const raw: Record<number, { qty: number; unit: string }> = {};
   form.value.components.forEach((_c: any, i: number) => {
     const entry = componentRaw.value[i];
@@ -215,12 +217,13 @@ const openModal = async (recipe: Recipe | null = null) => {
   if (recipe) {
     editingRecipe.value = { ...recipe };
     const cloned = JSON.parse(JSON.stringify(recipe));
+    totalWeight.value = cloned.total_weight ?? 1;
     form.value = cloned;
   } else {
     editingRecipe.value = null;
-    form.value = { name: '', instructions: '', notes: '', components: [] };
+    totalWeight.value = 1;
+    form.value = { name: '', instructions: '', notes: '', total_weight: 1, components: [] };
   }
-  totalWeight.value = 1;
   await nextTick();
   rebuildRawFromPct();
   const snap = JSON.parse(JSON.stringify(form.value));
@@ -237,7 +240,7 @@ const openModal = async (recipe: Recipe | null = null) => {
 const closeModal = () => {
   isModalOpen.value = false;
   editingRecipe.value = null;
-  form.value = { name: '', instructions: '', notes: '', components: [] };
+  form.value = { name: '', instructions: '', notes: '', total_weight: 1, components: [] };
   isCreateIngredientOpen.value = false;
   createTargetIndex.value = null;
   isExpertMode.value = false;
