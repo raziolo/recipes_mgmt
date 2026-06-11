@@ -155,7 +155,6 @@ const printSheet = async (taskId: number) => {
     printInstructions.value = (res.data.instructions || '')
       .split('\n')
       .map((l: string) => l.trim())
-      .filter(Boolean)
       .map((text: string) => ({ text, checked: true }));
     isPrintPreviewOpen.value = true;
   } catch (error) {
@@ -182,7 +181,8 @@ const doPrint = () => {
 <head><title>${h(data.recipe_name)}</title>
 <style>
   @page { margin: 0; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; color: #000; margin: 0; padding: 2cm; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; color: #000; padding: 0; }
   h1 { font-size: 24pt; font-weight: 900; margin-bottom: 4pt; }
   .total { font-size: 12pt; font-weight: 700; color: #555; margin-bottom: 20pt; }
   h2 { font-size: 14pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #333; border-bottom: 2pt solid #333; padding-bottom: 4pt; margin: 16pt 0 8pt; }
@@ -198,7 +198,7 @@ const doPrint = () => {
     ${data.ingredients.map((ing: any) => `<li>${h(ing.name)} — ${fmtQty(ing.qty, ing.unit)}</li>`).join('')}
   </ul>
   ${data.sub_recipes && data.sub_recipes.length > 0 ? '<h2>Sub-recipes</h2>\n  <ul>\n' + data.sub_recipes.map((sub: any) => `<li>${h(sub.recipe_name)} — ${fmtQty(sub.target_qty, sub.target_unit)}${sub.ingredients ? '<ul>' + sub.ingredients.map((ing: any) => `<li>${h(ing.name)} — ${fmtQty(ing.qty, ing.unit)}</li>`).join('') + '</ul>' : ''}</li>`).join('\n    ') + '\n  </ul>' : ''}
-  ${checkedItems.length > 0 ? `<h2>${t('recipes.form.printPreview.instructions')}</h2>\n  <ul>\n    ${checkedItems.map((item: any) => `<li>${h(item.text)}</li>`).join('\n    ')}\n  </ul>` : ''}
+  ${checkedItems.length > 0 ? `<h2>${t('recipes.form.printPreview.instructions')}</h2>\n  <ul>\n    ${checkedItems.map((item: any) => item.text ? `<li>${h(item.text)}</li>` : `<li style="list-style:none;height:.8em"></li>`).join('\n    ')}\n  </ul>` : ''}
 </body>
 </html>`);
   doc.close();

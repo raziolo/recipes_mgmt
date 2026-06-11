@@ -269,7 +269,6 @@ const openPrintPreview = () => {
   printInstructions.value = (form.value.instructions || '')
     .split('\n')
     .map(l => l.trim())
-    .filter(Boolean)
     .map(text => ({ text, checked: true }));
   isPrintPreviewOpen.value = true;
 };
@@ -292,7 +291,8 @@ const _printHtml = (title: string, bodyHtml: string) => {
 <head><title>${h(title)}</title>
 <style>
   @page { margin: 0; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; color: #000; margin: 0; padding: 2cm; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; color: #000; padding: 0; }
   h1 { font-size: 24pt; font-weight: 900; margin-bottom: 4pt; }
   .total { font-size: 12pt; font-weight: 700; color: #555; margin-bottom: 20pt; }
   h2 { font-size: 14pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #333; border-bottom: 2pt solid #333; padding-bottom: 4pt; margin: 16pt 0 8pt; }
@@ -321,7 +321,7 @@ const doPrint = () => {
   <ul>
     ${form.value.components.map((c: any) => `<li>${h(getCompName(c))} — ${(Number(c.value) || 0).toFixed(1)}% (${fmtQty(getCompAbsKg(c), getComponentUnit(c))})</li>`).join('')}
   </ul>
-  ${checkedItems.length > 0 ? `<h2>${t('recipes.form.printPreview.instructions')}</h2>\n  <ul>\n    ${checkedItems.map((item: any) => `<li>${h(item.text)}</li>`).join('\n    ')}\n  </ul>` : ''}`);
+  ${checkedItems.length > 0 ? `<h2>${t('recipes.form.printPreview.instructions')}</h2>\n  <ul>\n    ${checkedItems.map((item: any) => item.text ? `<li>${h(item.text)}</li>` : `<li style="list-style:none;height:.8em"></li>`).join('\n    ')}\n  </ul>` : ''}`);
 };
 
 const doCalcPrint = () => {
