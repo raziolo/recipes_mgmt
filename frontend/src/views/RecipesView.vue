@@ -5,7 +5,7 @@ import api from '../api';
 import AppModal from '../components/AppModal.vue';
 import ComboBox from '../components/ComboBox.vue';
 import type { Recipe, Ingredient } from '../types';
-import { PlusIcon, TrashIcon, CalculatorIcon, PencilIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, CalculatorIcon, PencilIcon, PrinterIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useI18n();
 const recipes = ref<Recipe[]>([]);
@@ -248,6 +248,41 @@ const closeModal = () => {
   initialFormSnapshot.value = '';
 };
 
+const activeTab = ref<'ingredients' | 'instructions'>('ingredients');
+const isPrintPreviewOpen = ref(false);
+const printInstructions = ref<{ text: string; checked: boolean }[]>([]);
+
+const getCompName = (comp: any): string => {
+  if (comp.ingredient_name) return comp.ingredient_name;
+  if (comp.sub_recipe_name) return comp.sub_recipe_name;
+  const ing = ingredients.value.find(i => i.id === comp.ingredient);
+  if (ing) return ing.name;
+  return '---';
+};
+
+const getCompAbsKg = (comp: any): number => {
+  const pct = Number(comp.value) || 0;
+  return totalWeight.value > 0 ? (pct / 100) * totalWeight.value : 0;
+};
+
+const openPrintPreview = () => {
+  printInstructions.value = (form.value.instructions || '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(text => ({ text, checked: true }));
+  isPrintPreviewOpen.value = true;
+};
+
+const checkedPrintItems = computed(() =>
+  printInstructions.value.filter(item => item.checked)
+);
+
+const doPrint = () => {
+  isPrintPreviewOpen.value = false;
+  setTimeout(() => window.print(), 200);
+};
+
 const addComponent = () => {
   const idx = form.value.components.length;
   form.value.components.push({ value: 0, unit: 'kg' });
@@ -387,6 +422,19 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
             <input v-model="form.name" type="text" required class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
           </div>
 
+          <!-- Tabs -->
+          <div class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit border border-gray-200 dark:border-gray-700">
+            <button type="button" @click="activeTab = 'ingredients'" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all" :class="activeTab === 'ingredients' ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+              {{ t('recipes.form.tabs.ingredients') }}
+            </button>
+            <button type="button" @click="activeTab = 'instructions'" class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all" :class="activeTab === 'instructions' ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+              {{ t('recipes.form.tabs.instructions') }}
+            </button>
+          </div>
+
+          <!-- Ingredients Tab -->
+          <template v-if="activeTab === 'ingredients'">
+
           <!-- Components -->
           <div>
             <div class="flex justify-between items-center mb-4">
@@ -484,11 +532,20 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
               </div>
             </div>
           </div>
+          </template>
 
-          <div>
-            <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.instructions') }}</label>
-            <textarea v-model="form.instructions" rows="4" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3"></textarea>
-          </div>
+          <!-- Instructions Tab -->
+          <template v-if="activeTab === 'instructions'">
+            <div>
+              <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{{ t('recipes.form.instructions') }}</label>
+              <textarea v-model="form.instructions" rows="10" class="block w-full rounded-xl border-gray-200 dark:border-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-gray-50 dark:bg-gray-900 p-3" />
+            </div>
+            <div class="flex justify-end">
+              <button type="button" @click="openPrintPreview" class="px-6 py-3 bg-gray-900 dark:bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-gray-800 dark:hover:bg-primary-700 transition-all flex items-center shadow-lg">
+                <PrinterIcon class="w-5 h-5 mr-2" /> {{ t('recipes.form.printPreview.title') }}
+              </button>
+            </div>
+          </template>
         </template>
 
         <template v-else>
@@ -536,6 +593,72 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
         </template>
       </form>
     </AppModal>
+
+    <!-- Print Preview Modal -->
+    <AppModal
+      :show="isPrintPreviewOpen"
+      :title="t('recipes.form.printPreview.title')"
+      @close="isPrintPreviewOpen = false"
+    >
+      <div class="space-y-6">
+        <div>
+          <h4 class="text-2xl font-black text-gray-900 dark:text-white">{{ form.name }}</h4>
+          <p class="mt-1 text-sm font-bold text-gray-500">{{ t('recipes.form.totalWeight') }}: {{ fmtQty(totalWeight, 'kg') }}</p>
+        </div>
+
+        <div>
+          <h5 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">{{ t('recipes.form.printPreview.components') }}</h5>
+          <div class="space-y-2">
+            <div v-for="(comp, i) in form.components" :key="i" class="flex justify-between items-center py-2 px-3 bg-gray-50 dark:bg-gray-900 rounded-xl">
+              <span class="font-bold text-gray-700 dark:text-gray-300 text-sm">{{ getCompName(comp) }}</span>
+              <span class="text-xs font-bold text-primary-600 dark:text-primary-400 whitespace-nowrap">{{ (comp.value || 0).toFixed(1) }}% — {{ fmtQty(getCompAbsKg(comp), getComponentUnit(comp)) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h5 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">{{ t('recipes.form.printPreview.instructions') }}</h5>
+          <div v-if="printInstructions.length === 0" class="text-sm text-gray-400 italic">---</div>
+          <div v-else class="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+            <label v-for="(item, i) in printInstructions" :key="i" class="flex items-start gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900 cursor-pointer">
+              <input type="checkbox" v-model="item.checked" class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500" />
+              <span class="text-sm text-gray-700 dark:text-gray-300 select-none">{{ item.text }}</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+          <button type="button" @click="isPrintPreviewOpen = false" class="px-6 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+            {{ t('recipes.form.printPreview.cancel') }}
+          </button>
+          <button type="button" @click="doPrint" class="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 shadow-lg shadow-primary-500/20 flex items-center">
+            <PrinterIcon class="w-5 h-5 mr-2" /> {{ t('recipes.form.printPreview.print') }}
+          </button>
+        </div>
+      </div>
+    </AppModal>
+
+    <!-- Printable Block (hidden on screen) -->
+    <div id="print-area" class="print-only">
+      <div class="print-header">
+        <h1>{{ form.name }}</h1>
+        <p class="print-total">{{ t('recipes.form.totalWeight') }}: {{ fmtQty(totalWeight, 'kg') }}</p>
+      </div>
+      <div class="print-section">
+        <h2>{{ t('recipes.form.printPreview.components') }}</h2>
+        <ul>
+          <li v-for="(comp, i) in form.components" :key="i">
+            {{ getCompName(comp) }} — {{ (comp.value || 0).toFixed(1) }}% ({{ fmtQty(getCompAbsKg(comp), getComponentUnit(comp)) }})
+          </li>
+        </ul>
+      </div>
+      <div class="print-section">
+        <h2>{{ t('recipes.form.printPreview.instructions') }}</h2>
+        <ul>
+          <li v-for="(item, i) in checkedPrintItems" :key="i">{{ item.text }}</li>
+        </ul>
+      </div>
+    </div>
 
     <!-- Calculation Modal -->
     <AppModal 
@@ -609,5 +732,63 @@ const setComponentType = (comp: any, type: 'ingredient' | 'sub_recipe') => {
 }
 :root.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #374151;
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-area, #print-area * {
+    visibility: visible;
+  }
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 2cm;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #000;
+  }
+  #print-area h1 {
+    font-size: 24pt;
+    font-weight: 900;
+    margin-bottom: 8pt;
+  }
+  #print-area .print-total {
+    font-size: 12pt;
+    font-weight: 700;
+    color: #555;
+    margin-bottom: 20pt;
+  }
+  #print-area .print-section {
+    margin-bottom: 16pt;
+  }
+  #print-area .print-section h2 {
+    font-size: 14pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #333;
+    border-bottom: 2pt solid #333;
+    padding-bottom: 4pt;
+    margin-bottom: 8pt;
+  }
+  #print-area ul {
+    list-style: disc;
+    padding-left: 20pt;
+    margin: 0;
+  }
+  #print-area li {
+    font-size: 11pt;
+    padding: 2pt 0;
+    line-height: 1.5;
+  }
 }
 </style>

@@ -4,11 +4,12 @@ from rest_framework.response import Response
 from .models import ProductionSession, ProductionTask
 from .serializers import ProductionSessionSerializer, ProductionTaskSerializer
 from recipes.services import RecipeCalculator
-from printing.services import ProductionSheetPrinter
+
 
 class ProductionSessionViewSet(viewsets.ModelViewSet):
     queryset = ProductionSession.objects.all().order_by('-date')
     serializer_class = ProductionSessionSerializer
+
 
 class ProductionTaskViewSet(viewsets.ModelViewSet):
     queryset = ProductionTask.objects.all()
@@ -22,11 +23,7 @@ class ProductionTaskViewSet(viewsets.ModelViewSet):
             data['instructions'] = task.recipe.instructions or "See master recipe."
             task.calculated_data = data
             task.save(update_fields=['calculated_data'])
-            
-            printer = ProductionSheetPrinter(printer_type='dummy')
-            printer.print_task(data)
-            
-            return Response({'status': 'Printed (mocked)', 'output': str(printer.get_output())})
+            return Response(data)
         except Exception as e:
             import traceback
             print(traceback.format_exc())

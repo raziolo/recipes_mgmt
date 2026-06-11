@@ -54,6 +54,17 @@ const messages = {
         deduceBtn: 'Deduce Percentages',
         totalWeight: 'Total',
         noteQty: 'Enter quantities — percentages are computed automatically',
+        tabs: {
+          ingredients: 'Ingredients',
+          instructions: 'Instructions',
+        },
+        printPreview: {
+          title: 'Print Preview',
+          print: 'Print',
+          cancel: 'Cancel',
+          components: 'Ingredients',
+          instructions: 'Instructions',
+        },
       },
       actions: {
         calculate: 'Calculate',
@@ -147,6 +158,17 @@ const messages = {
         deduceBtn: 'Deduci Percentuali',
         totalWeight: 'Totale',
         noteQty: 'Inserisci le quantità — le percentuali sono calcolate automaticamente',
+        tabs: {
+          ingredients: 'Ingredienti',
+          instructions: 'Istruzioni',
+        },
+        printPreview: {
+          title: 'Anteprima Stampa',
+          print: 'Stampa',
+          cancel: 'Annulla',
+          components: 'Ingredienti',
+          instructions: 'Istruzioni',
+        },
       },
       actions: {
         calculate: 'Calcola',

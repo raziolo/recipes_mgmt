@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import api from '../api';
 import AppModal from '../components/AppModal.vue';
@@ -109,14 +109,33 @@ const deleteTask = async (taskId: number) => {
   }
 };
 
+const isPrintPreviewOpen = ref(false);
+const printPreviewData = ref<any>(null);
+const printInstructions = ref<{ text: string; checked: boolean }[]>([]);
+
+const checkedPrintItems = computed(() =>
+  printInstructions.value.filter(item => item.checked)
+);
+
 const printSheet = async (taskId: number) => {
   try {
-    await api.post(`production-tasks/${taskId}/print_sheet/`);
-    alert('Sent to printer!');
+    const res = await api.post(`production-tasks/${taskId}/print_sheet/`);
+    printPreviewData.value = res.data;
+    printInstructions.value = (res.data.instructions || '')
+      .split('\n')
+      .map((l: string) => l.trim())
+      .filter(Boolean)
+      .map((text: string) => ({ text, checked: true }));
+    isPrintPreviewOpen.value = true;
   } catch (error) {
     console.error('Printing error:', error);
-    alert('Failed to print.');
+    alert('Failed to load print preview.');
   }
+};
+
+const doPrint = () => {
+  isPrintPreviewOpen.value = false;
+  setTimeout(() => window.print(), 200);
 };
 
 const deleteSession = async (id: number) => {
@@ -279,5 +298,164 @@ const getStatusClass = (status: string) => {
         </div>
       </form>
     </AppModal>
+
+    <!-- Print Preview Modal -->
+    <AppModal
+      :show="isPrintPreviewOpen"
+      :title="t('production.actions.print')"
+      @close="isPrintPreviewOpen = false"
+    >
+      <div v-if="printPreviewData" class="space-y-6">
+        <div>
+          <h4 class="text-2xl font-black text-gray-900 dark:text-white">{{ printPreviewData.recipe_name }}</h4>
+          <p class="mt-1 text-sm font-bold text-gray-500">{{ printPreviewData.target_qty }} {{ printPreviewData.target_unit }}</p>
+        </div>
+
+        <div>
+          <h5 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">{{ t('recipes.form.printPreview.components') }}</h5>
+          <div class="space-y-2">
+            <div v-for="(ing, i) in printPreviewData.ingredients" :key="i" class="flex justify-between items-center py-2 px-3 bg-gray-50 dark:bg-gray-900 rounded-xl">
+              <span class="font-bold text-gray-700 dark:text-gray-300 text-sm">{{ ing.name }}</span>
+              <span class="text-xs font-bold text-primary-600 dark:text-primary-400 whitespace-nowrap">{{ ing.qty }} {{ ing.unit }}</span>
+            </div>
+            <div v-if="printPreviewData.sub_recipes && printPreviewData.sub_recipes.length > 0" class="mt-4">
+              <div v-for="(sub, i) in printPreviewData.sub_recipes" :key="'sub'+i" class="py-2 px-3 bg-gray-50 dark:bg-gray-900 rounded-xl mb-2">
+                <p class="font-bold text-gray-700 dark:text-gray-300 text-sm mb-1">{{ sub.recipe_name }} — {{ sub.target_qty }} {{ sub.target_unit }}</p>
+                <div v-for="(ing, j) in sub.ingredients" :key="'s'+i+'i'+j" class="flex justify-between items-center pl-4 py-0.5">
+                  <span class="text-xs text-gray-500">{{ ing.name }}</span>
+                  <span class="text-xs font-bold text-primary-600 dark:text-primary-400">{{ ing.qty }} {{ ing.unit }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h5 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">{{ t('recipes.form.printPreview.instructions') }}</h5>
+          <div v-if="printInstructions.length === 0" class="text-sm text-gray-400 italic">---</div>
+          <div v-else class="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+            <label v-for="(item, i) in printInstructions" :key="i" class="flex items-start gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900 cursor-pointer">
+              <input type="checkbox" v-model="item.checked" class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500" />
+              <span class="text-sm text-gray-700 dark:text-gray-300 select-none">{{ item.text }}</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+          <button type="button" @click="isPrintPreviewOpen = false" class="px-6 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="button" @click="doPrint" class="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 shadow-lg shadow-primary-500/20 flex items-center">
+            <PrinterIcon class="w-5 h-5 mr-2" /> {{ t('production.actions.print') }}
+          </button>
+        </div>
+      </div>
+    </AppModal>
+
+    <!-- Printable Block -->
+    <div id="print-area-production" class="print-only">
+      <div v-if="printPreviewData" class="print-header">
+        <h1>{{ printPreviewData.recipe_name }}</h1>
+        <p class="print-total">{{ printPreviewData.target_qty }} {{ printPreviewData.target_unit }}</p>
+      </div>
+      <div v-if="printPreviewData" class="print-section">
+        <h2>{{ t('recipes.form.printPreview.components') }}</h2>
+        <ul>
+          <li v-for="(ing, i) in printPreviewData.ingredients" :key="i">
+            {{ ing.name }} — {{ ing.qty }} {{ ing.unit }}
+          </li>
+        </ul>
+        <div v-if="printPreviewData.sub_recipes && printPreviewData.sub_recipes.length > 0">
+          <div v-for="(sub, i) in printPreviewData.sub_recipes" :key="'sub'+i" style="margin-top:8pt">
+            <p style="font-weight:700">{{ sub.recipe_name }} — {{ sub.target_qty }} {{ sub.target_unit }}</p>
+            <ul>
+              <li v-for="(ing, j) in sub.ingredients" :key="'s'+i+'i'+j">
+                {{ ing.name }} — {{ ing.qty }} {{ ing.unit }}
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div v-if="checkedPrintItems.length > 0" class="print-section">
+        <h2>{{ t('recipes.form.printPreview.instructions') }}</h2>
+        <ul>
+          <li v-for="(item, i) in checkedPrintItems" :key="i">{{ item.text }}</li>
+        </ul>
+      </div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #e5e7eb;
+  border-radius: 9999px;
+}
+:root.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #374151;
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-area-production, #print-area-production * {
+    visibility: visible;
+  }
+  #print-area-production {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 2cm;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #000;
+  }
+  #print-area-production h1 {
+    font-size: 24pt;
+    font-weight: 900;
+    margin-bottom: 8pt;
+  }
+  #print-area-production .print-total {
+    font-size: 12pt;
+    font-weight: 700;
+    color: #555;
+    margin-bottom: 20pt;
+  }
+  #print-area-production .print-section {
+    margin-bottom: 16pt;
+  }
+  #print-area-production .print-section h2 {
+    font-size: 14pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #333;
+    border-bottom: 2pt solid #333;
+    padding-bottom: 4pt;
+    margin-bottom: 8pt;
+  }
+  #print-area-production ul {
+    list-style: disc;
+    padding-left: 20pt;
+    margin: 0;
+  }
+  #print-area-production li {
+    font-size: 11pt;
+    padding: 2pt 0;
+    line-height: 1.5;
+  }
+}
+</style>
